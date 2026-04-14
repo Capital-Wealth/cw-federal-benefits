@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { createServiceClient } from "@/lib/supabase/client";
+import { parseDocument } from "@/lib/parsing/document-parser";
 import type { DocumentType } from "@/types";
 
 /**
@@ -126,10 +127,22 @@ export async function POST(request: NextRequest) {
     .update({ status: "uploaded" })
     .eq("id", session.id);
 
+  // Auto-trigger AI parsing in the background
+  // Non-blocking — the upload response returns immediately
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  fetch(`${appUrl}/api/parse`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, documentIds: [doc.id] }),
+  }).catch((err) => {
+    console.error("Background parse trigger failed:", err);
+  });
+
   return Response.json({
     documentId: doc.id,
     fileName: file.name,
     documentType,
     uploadedAt: doc.uploaded_at,
+    parsing: true,
   });
 }

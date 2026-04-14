@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>FEGLI_Option_C_Multiplier__c</fullName>
+    <description>FEGLI Option C multiplier</description>
+    <label>FEGLI Option C Multiplier</label>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Picklist</type>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>1x</fullName>
+                <default>false</default>
+                <label>1x</label>
+            </value>
+            <value>
+                <fullName>2x</fullName>
+                <default>false</default>
+                <label>2x</label>
+            </value>
+            <value>
+                <fullName>3x</fullName>
+                <default>false</default>
+                <label>3x</label>
+            </value>
+            <value>
+                <fullName>4x</fullName>
+                <default>false</default>
+                <label>4x</label>
+            </value>
+            <value>
+                <fullName>5x</fullName>
+                <default>false</default>
+                <label>5x</label>
+            </value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>

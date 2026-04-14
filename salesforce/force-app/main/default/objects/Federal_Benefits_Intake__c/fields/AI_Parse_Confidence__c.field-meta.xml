@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>AI_Parse_Confidence__c</fullName>
+    <description>Overall confidence score from AI document parsing</description>
+    <label>AI Parse Confidence</label>
+    <precision>5</precision>
+    <required>false</required>
+    <scale>1</scale>
+    <trackTrending>false</trackTrending>
+    <type>Percent</type>
+</CustomField>

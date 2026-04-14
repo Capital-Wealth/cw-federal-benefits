@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>FEGLI_Option_C_Spouse__c</fullName>
+    <defaultValue>false</defaultValue>
+    <description>FEGLI Option C covers spouse</description>
+    <label>FEGLI Option C Cover Spouse</label>
+    <trackTrending>false</trackTrending>
+    <type>Checkbox</type>
+</CustomField>

@@ -2,36 +2,87 @@
  * Salesforce Connector for Federal Benefits Intake
  *
  * Reads/writes Federal_Benefits_Intake__c records.
- * Uses jsforce with OAuth2 JWT bearer token flow for server-to-server auth.
+ * Supports three auth methods:
+ * 1. SF_ACCESS_TOKEN env var (direct token — for dev, auto-refreshed by SF CLI)
+ * 2. SF CLI token (reads from `sf org display` if available)
+ * 3. Username/password flow (for production/deployed environments)
  */
 
 import jsforce, { Connection } from "jsforce";
+import { execSync } from "child_process";
 import type { FederalBenefitsIntake } from "@/types";
 
 let connection: Connection | null = null;
+let tokenExpiresAt: number = 0;
+
+/**
+ * Try to get a fresh access token from the SF CLI.
+ * This works in local dev when you're authenticated via `sf org login web`.
+ */
+function getCliToken(): { accessToken: string; instanceUrl: string } | null {
+  try {
+    const result = execSync("sf org display --target-org cw --json 2>/dev/null", {
+      encoding: "utf-8",
+      timeout: 10000,
+    });
+    const data = JSON.parse(result);
+    if (data?.result?.accessToken && data?.result?.instanceUrl) {
+      return {
+        accessToken: data.result.accessToken,
+        instanceUrl: data.result.instanceUrl,
+      };
+    }
+  } catch {
+    // CLI not available or not authenticated
+  }
+  return null;
+}
 
 /**
  * Get an authenticated Salesforce connection.
  */
 export async function getSFConnection(): Promise<Connection> {
-  if (connection) return connection;
+  // Re-use connection if token hasn't expired (refresh every 90 min)
+  if (connection && Date.now() < tokenExpiresAt) return connection;
 
-  const conn = new Connection({
-    loginUrl: process.env.SF_LOGIN_URL || "https://login.salesforce.com",
-    instanceUrl: process.env.SF_INSTANCE_URL,
-    accessToken: process.env.SF_ACCESS_TOKEN,
-  });
+  const instanceUrl = process.env.SF_INSTANCE_URL || "https://capitalwealth.my.salesforce.com";
 
-  // If we have username/password, use that for now (switch to JWT in prod)
+  // Method 1: Direct access token from env
+  if (process.env.SF_ACCESS_TOKEN) {
+    connection = new Connection({ instanceUrl, accessToken: process.env.SF_ACCESS_TOKEN });
+    tokenExpiresAt = Date.now() + 90 * 60 * 1000;
+    return connection;
+  }
+
+  // Method 2: SF CLI token (local dev)
+  const cliAuth = getCliToken();
+  if (cliAuth) {
+    connection = new Connection({
+      instanceUrl: cliAuth.instanceUrl,
+      accessToken: cliAuth.accessToken,
+    });
+    tokenExpiresAt = Date.now() + 90 * 60 * 1000;
+    return connection;
+  }
+
+  // Method 3: Username/password (deployed environments)
   if (process.env.SF_USERNAME && process.env.SF_PASSWORD) {
+    const conn = new Connection({
+      loginUrl: process.env.SF_LOGIN_URL || "https://login.salesforce.com",
+      instanceUrl,
+    });
     await conn.login(
       process.env.SF_USERNAME,
       process.env.SF_PASSWORD + (process.env.SF_SECURITY_TOKEN || "")
     );
+    connection = conn;
+    tokenExpiresAt = Date.now() + 90 * 60 * 1000;
+    return conn;
   }
 
-  connection = conn;
-  return conn;
+  throw new Error(
+    "No Salesforce auth available. Set SF_ACCESS_TOKEN, authenticate SF CLI, or provide SF_USERNAME/SF_PASSWORD."
+  );
 }
 
 // ============================================================

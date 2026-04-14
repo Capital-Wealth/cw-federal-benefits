@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>LTC_Inflation_Protection__c</fullName>
+    <description>Long Term Care inflation protection type</description>
+    <label>LTC Inflation Protection</label>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Picklist</type>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>ACI 5%</fullName>
+                <default>false</default>
+                <label>ACI 5%</label>
+            </value>
+            <value>
+                <fullName>ACI 4%</fullName>
+                <default>false</default>
+                <label>ACI 4%</label>
+            </value>
+            <value>
+                <fullName>FPO</fullName>
+                <default>false</default>
+                <label>FPO</label>
+            </value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>TSP_Roth_L_Fund__c</fullName>
+    <description>Roth TSP Lifecycle fund selection</description>
+    <label>TSP Roth L Fund</label>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Picklist</type>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>L Income</fullName>
+                <default>false</default>
+                <label>L Income</label>
+            </value>
+            <value>
+                <fullName>L2025</fullName>
+                <default>false</default>
+                <label>L2025</label>
+            </value>
+            <value>
+                <fullName>L2030</fullName>
+                <default>false</default>
+                <label>L2030</label>
+            </value>
+            <value>
+                <fullName>L2035</fullName>
+                <default>false</default>
+                <label>L2035</label>
+            </value>
+            <value>
+                <fullName>L2040</fullName>
+                <default>false</default>
+                <label>L2040</label>
+            </value>
+            <value>
+                <fullName>L2045</fullName>
+                <default>false</default>
+                <label>L2045</label>
+            </value>
+            <value>
+                <fullName>L2050</fullName>
+                <default>false</default>
+                <label>L2050</label>
+            </value>
+            <value>
+                <fullName>L2055</fullName>
+                <default>false</default>
+                <label>L2055</label>
+            </value>
+            <value>
+                <fullName>L2060</fullName>
+                <default>false</default>
+                <label>L2060</label>
+            </value>
+            <value>
+                <fullName>L2065</fullName>
+                <default>false</default>
+                <label>L2065</label>
+            </value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>

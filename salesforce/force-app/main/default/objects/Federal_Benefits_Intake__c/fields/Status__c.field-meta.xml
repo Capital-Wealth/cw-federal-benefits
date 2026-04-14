@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Status__c</fullName>
+    <description>Current status of the intake process</description>
+    <label>Intake Status</label>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Picklist</type>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>Draft</fullName>
+                <default>false</default>
+                <label>Draft</label>
+            </value>
+            <value>
+                <fullName>Link Sent</fullName>
+                <default>false</default>
+                <label>Link Sent</label>
+            </value>
+            <value>
+                <fullName>Docs Uploaded</fullName>
+                <default>false</default>
+                <label>Docs Uploaded</label>
+            </value>
+            <value>
+                <fullName>AI Parsed</fullName>
+                <default>false</default>
+                <label>AI Parsed</label>
+            </value>
+            <value>
+                <fullName>Advisor Review</fullName>
+                <default>false</default>
+                <label>Advisor Review</label>
+            </value>
+            <value>
+                <fullName>Complete</fullName>
+                <default>false</default>
+                <label>Complete</label>
+            </value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>

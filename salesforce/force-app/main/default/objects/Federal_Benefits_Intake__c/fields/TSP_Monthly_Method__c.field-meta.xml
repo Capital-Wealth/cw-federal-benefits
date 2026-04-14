@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>TSP_Monthly_Method__c</fullName>
+    <description>If Monthly Amount, which calculation method</description>
+    <label>TSP Monthly Method</label>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Picklist</type>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>Specific Dollar Amount</fullName>
+                <default>false</default>
+                <label>Specific Dollar Amount</label>
+            </value>
+            <value>
+                <fullName>Life Expectancy</fullName>
+                <default>false</default>
+                <label>Life Expectancy</label>
+            </value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>

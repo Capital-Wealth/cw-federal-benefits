@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { createServiceClient } from "@/lib/supabase/client";
+import { createIntake } from "@/lib/salesforce/connector";
 import { v4 as uuidv4 } from "uuid";
 
 /**
@@ -23,6 +24,20 @@ export async function POST(request: NextRequest) {
   const token = uuidv4();
   const supabase = createServiceClient();
 
+  // Create the Federal_Benefits_Intake__c record in Salesforce
+  let sfIntakeId: string | null = null;
+  try {
+    sfIntakeId = await createIntake({
+      status: "Draft",
+      leadId: sfLeadId || undefined,
+      contactId: sfContactId || undefined,
+      advisorId: advisorId || undefined,
+      intakeDate: new Date().toISOString().split("T")[0],
+    });
+  } catch (err) {
+    console.error("SF intake creation failed (continuing):", err);
+  }
+
   // Create intake session in Supabase
   const { data, error } = await supabase
     .from("intake_sessions")
@@ -32,6 +47,7 @@ export async function POST(request: NextRequest) {
       client_email: clientEmail,
       sf_lead_id: sfLeadId || null,
       sf_contact_id: sfContactId || null,
+      sf_intake_id: sfIntakeId,
       advisor_id: advisorId || null,
       status: "active",
     })
@@ -46,12 +62,27 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Update SF record with the upload URL
+  if (sfIntakeId) {
+    const portalUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://benefits.capitalwealth.com"}/portal/${token}`;
+    try {
+      const { updateIntake } = await import("@/lib/salesforce/connector");
+      await updateIntake(sfIntakeId, {
+        status: "Link Sent",
+        documentUploadUrl: portalUrl,
+        supabaseFolderId: token,
+      });
+    } catch (err) {
+      console.error("SF URL update failed:", err);
+    }
+  }
+
   // Log the creation
   await supabase.from("audit_log").insert({
     session_id: data.id,
     action: "create",
     actor: advisorId ? `advisor:${advisorId}` : "system",
-    details: { clientName, clientEmail },
+    details: { clientName, clientEmail, sfIntakeId },
   });
 
   const portalUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://benefits.capitalwealth.com"}/portal/${token}`;
@@ -60,6 +91,7 @@ export async function POST(request: NextRequest) {
     sessionId: data.id,
     token,
     portalUrl,
+    sfIntakeId,
     expiresAt: data.expires_at,
   });
 }

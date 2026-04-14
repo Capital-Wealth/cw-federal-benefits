@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>SS_FERS_Start_Age__c</fullName>
+    <description>Age to begin taking Social Security (FERS)</description>
+    <externalId>false</externalId>
+    <label>SS Start Age (FERS)</label>
+    <precision>4</precision>
+    <required>false</required>
+    <scale>0</scale>
+    <trackTrending>false</trackTrending>
+    <type>Number</type>
+    <unique>false</unique>
+</CustomField>

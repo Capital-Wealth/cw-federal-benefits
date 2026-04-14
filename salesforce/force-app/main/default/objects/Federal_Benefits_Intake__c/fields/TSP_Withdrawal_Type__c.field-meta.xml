@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>TSP_Withdrawal_Type__c</fullName>
+    <description>TSP withdrawal method</description>
+    <label>TSP Withdrawal Type</label>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Picklist</type>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>Lump Sum</fullName>
+                <default>false</default>
+                <label>Lump Sum</label>
+            </value>
+            <value>
+                <fullName>Monthly Amount</fullName>
+                <default>false</default>
+                <label>Monthly Amount</label>
+            </value>
+            <value>
+                <fullName>Annuity</fullName>
+                <default>false</default>
+                <label>Annuity</label>
+            </value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>FEGLI_Basic_Reduce_65__c</fullName>
+    <description>FEGLI Basic reduction at age 65</description>
+    <label>FEGLI Basic Reduce at 65</label>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Picklist</type>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>No Reduction</fullName>
+                <default>false</default>
+                <label>No Reduction</label>
+            </value>
+            <value>
+                <fullName>50% Reduction</fullName>
+                <default>false</default>
+                <label>50% Reduction</label>
+            </value>
+            <value>
+                <fullName>75% Reduction</fullName>
+                <default>false</default>
+                <label>75% Reduction</label>
+            </value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Employee_Category__c</fullName>
+    <description>Special employee category if applicable</description>
+    <label>Employee Category</label>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Picklist</type>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>None</fullName>
+                <default>false</default>
+                <label>None</label>
+            </value>
+            <value>
+                <fullName>Firefighter</fullName>
+                <default>false</default>
+                <label>Firefighter</label>
+            </value>
+            <value>
+                <fullName>Law Enforcement</fullName>
+                <default>false</default>
+                <label>Law Enforcement</label>
+            </value>
+            <value>
+                <fullName>Air Traffic Controller</fullName>
+                <default>false</default>
+                <label>Air Traffic Controller</label>
+            </value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>
