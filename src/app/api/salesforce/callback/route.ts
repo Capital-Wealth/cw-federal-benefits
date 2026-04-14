@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { SF_CONFIG, getAppUrl } from "@/config";
 
 /**
  * GET /api/salesforce/callback — OAuth callback for Vision's report builder
@@ -17,16 +18,16 @@ export async function GET(request: NextRequest) {
 
   // Exchange auth code for tokens
   const tokenResponse = await fetch(
-    "https://login.salesforce.com/services/oauth2/token",
+    SF_CONFIG.oauthTokenUrl,
     {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         grant_type: "authorization_code",
         code,
-        client_id: process.env.SF_CONSUMER_KEY || "",
-        client_secret: process.env.SF_CONSUMER_SECRET || "",
-        redirect_uri: `${process.env.NEXT_PUBLIC_APP_URL || "https://cw-federal-report-builder.vercel.app"}/api/salesforce/callback`,
+        client_id: SF_CONFIG.consumerKey || "",
+        client_secret: SF_CONFIG.consumerSecret || "",
+        redirect_uri: `${getAppUrl()}/api/salesforce/callback`,
       }),
     }
   );

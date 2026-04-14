@@ -11,6 +11,7 @@
 import jsforce, { Connection } from "jsforce";
 import { execSync } from "child_process";
 import type { FederalBenefitsIntake } from "@/types";
+import { SF_CONFIG } from "@/config";
 
 let connection: Connection | null = null;
 let tokenExpiresAt: number = 0;
@@ -21,9 +22,9 @@ let tokenExpiresAt: number = 0;
  */
 function getCliToken(): { accessToken: string; instanceUrl: string } | null {
   try {
-    const result = execSync("sf org display --target-org cw --json 2>/dev/null", {
+    const result = execSync(`sf org display --target-org ${SF_CONFIG.cliOrgAlias} --json 2>/dev/null`, {
       encoding: "utf-8",
-      timeout: 10000,
+      timeout: SF_CONFIG.cliTimeoutMs,
     });
     const data = JSON.parse(result);
     if (data?.result?.accessToken && data?.result?.instanceUrl) {
@@ -45,12 +46,12 @@ export async function getSFConnection(): Promise<Connection> {
   // Re-use connection if token hasn't expired (refresh every 90 min)
   if (connection && Date.now() < tokenExpiresAt) return connection;
 
-  const instanceUrl = process.env.SF_INSTANCE_URL || "https://capitalwealth.my.salesforce.com";
+  const instanceUrl = SF_CONFIG.instanceUrl;
 
   // Method 1: Direct access token from env
   if (process.env.SF_ACCESS_TOKEN) {
     connection = new Connection({ instanceUrl, accessToken: process.env.SF_ACCESS_TOKEN });
-    tokenExpiresAt = Date.now() + 90 * 60 * 1000;
+    tokenExpiresAt = Date.now() + SF_CONFIG.tokenCacheMs;
     return connection;
   }
 
@@ -61,14 +62,14 @@ export async function getSFConnection(): Promise<Connection> {
       instanceUrl: cliAuth.instanceUrl,
       accessToken: cliAuth.accessToken,
     });
-    tokenExpiresAt = Date.now() + 90 * 60 * 1000;
+    tokenExpiresAt = Date.now() + SF_CONFIG.tokenCacheMs;
     return connection;
   }
 
   // Method 3: Username/password (deployed environments)
   if (process.env.SF_USERNAME && process.env.SF_PASSWORD) {
     const conn = new Connection({
-      loginUrl: process.env.SF_LOGIN_URL || "https://login.salesforce.com",
+      loginUrl: SF_CONFIG.loginUrl,
       instanceUrl,
     });
     await conn.login(
@@ -76,7 +77,7 @@ export async function getSFConnection(): Promise<Connection> {
       process.env.SF_PASSWORD + (process.env.SF_SECURITY_TOKEN || "")
     );
     connection = conn;
-    tokenExpiresAt = Date.now() + 90 * 60 * 1000;
+    tokenExpiresAt = Date.now() + SF_CONFIG.tokenCacheMs;
     return conn;
   }
 

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { createServiceClient } from "@/lib/supabase/client";
 import { parseDocument, mergeParseResults } from "@/lib/parsing/document-parser";
 import { updateIntake } from "@/lib/salesforce/connector";
+import { SUPABASE_CONFIG } from "@/config";
 import type { DocumentType, FederalBenefitsIntake } from "@/types";
 
 /**
@@ -72,7 +73,7 @@ export async function POST(request: NextRequest) {
     try {
       // Download from Supabase storage
       const { data: fileData, error: downloadError } = await supabase.storage
-        .from("federal-docs")
+        .from(SUPABASE_CONFIG.storageBucket)
         .download(doc.storage_path);
 
       if (downloadError || !fileData) {

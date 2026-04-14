@@ -20,6 +20,7 @@ export type FEGLIMultiplier = "1x" | "2x" | "3x" | "4x" | "5x";
 export interface FederalBenefitsIntake {
   id?: string;
   name?: string; // FBI-0001, etc.
+  dateOfBirth?: string;
   leadId?: string;
   contactId?: string;
   advisorId?: string;

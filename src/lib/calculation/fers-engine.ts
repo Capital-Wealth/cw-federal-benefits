@@ -17,18 +17,15 @@ import type {
   ScenarioComparison,
 } from "@/types";
 
-// ============================================================
-// Constants
-// ============================================================
-
-const HOURS_PER_YEAR = 2087; // OPM standard work hours per year
-const FERS_MULTIPLIER_STANDARD = 0.01; // 1%
-const FERS_MULTIPLIER_ENHANCED = 0.011; // 1.1% (age 62+ with 20+ years)
-const CSRS_MULTIPLIER_FIRST_5 = 0.015; // 1.5% for first 5 years
-const CSRS_MULTIPLIER_NEXT_5 = 0.0175; // 1.75% for years 5-10
-const CSRS_MULTIPLIER_OVER_10 = 0.02; // 2% for years over 10
-const FERS_SUPPLEMENT_SS_DIVISOR = 40; // 40 years for full SS benefit
-const MONTHS_PER_YEAR = 12;
+import {
+  HOURS_PER_YEAR, PAY_PERIODS_PER_YEAR, MONTHS_PER_YEAR,
+  FERS_MULTIPLIER_STANDARD, FERS_MULTIPLIER_ENHANCED,
+  CSRS_MULTIPLIER_FIRST_5, CSRS_MULTIPLIER_NEXT_5, CSRS_MULTIPLIER_OVER_10,
+  CSRS_PENSION_CAP, CSRS_SURVIVOR_THRESHOLD,
+  FERS_SUPPLEMENT_SS_DIVISOR, FERS_AGENCY_MATCH,
+  DEFAULT_SALARY_INCREASE_PCT, DEFAULT_TSP_RETURN_PCT,
+  DEFAULT_LIFE_EXPECTANCY_YEARS, DEFAULT_ANNUITY_RATE_PCT,
+} from "@/config";
 
 // ============================================================
 // Core Calculation Functions
@@ -136,7 +133,7 @@ export function calculateCSRSPension(
   }
 
   // CSRS pension capped at 80% of high-3
-  annual = Math.min(annual, highThree * 0.8);
+  annual = Math.min(annual, highThree * CSRS_PENSION_CAP);
 
   return {
     annual: Math.round(annual * 100) / 100,
@@ -163,8 +160,8 @@ export function calculateSurvivorReduction(
   }
 
   // CSRS: reduction = 2.5% of first $3,600 + 10% of remainder, × survivor %
-  const base = Math.min(annualPension, 3600) * 0.025;
-  const excess = Math.max(0, annualPension - 3600) * 0.1;
+  const base = Math.min(annualPension, CSRS_SURVIVOR_THRESHOLD) * 0.025;
+  const excess = Math.max(0, annualPension - CSRS_SURVIVOR_THRESHOLD) * 0.1;
   return (base + excess) * (survivorPct / 100);
 }
 
@@ -195,9 +192,8 @@ export function projectTSPBalance(
   annualReturn: number,
   yearsUntilRetirement: number
 ): number {
-  const periodsPerYear = 26; // biweekly
-  const ratePerPeriod = annualReturn / 100 / periodsPerYear;
-  const totalPeriods = Math.round(yearsUntilRetirement * periodsPerYear);
+  const ratePerPeriod = annualReturn / 100 / PAY_PERIODS_PER_YEAR;
+  const totalPeriods = Math.round(yearsUntilRetirement * PAY_PERIODS_PER_YEAR);
   const totalBiweeklyContrib = biweeklyContribution + agencyMatch;
 
   // Future value of existing balance
@@ -232,13 +228,13 @@ export function calculateTSPMonthlyIncome(
       if (monthlyAmount) return monthlyAmount;
       // Life expectancy method
       if (lifeExpectancyYears && lifeExpectancyYears > 0) {
-        return Math.round((balance / (lifeExpectancyYears * 12)) * 100) / 100;
+        return Math.round((balance / (lifeExpectancyYears * MONTHS_PER_YEAR)) * 100) / 100;
       }
       return 0;
     case "Annuity":
       // TSP annuity calculation (simplified)
-      const rate = (annuityRate || 3) / 100 / 12;
-      const payments = (lifeExpectancyYears || 25) * 12;
+      const rate = (annuityRate || DEFAULT_ANNUITY_RATE_PCT) / 100 / MONTHS_PER_YEAR;
+      const payments = (lifeExpectancyYears || DEFAULT_LIFE_EXPECTANCY_YEARS) * MONTHS_PER_YEAR;
       if (rate > 0) {
         return Math.round(
           balance * (rate / (1 - Math.pow(1 + rate, -payments))) * 100
@@ -284,17 +280,21 @@ export function calculateRetirementProjection(
   const totalServiceCredit = baseYears + sickLeaveCredit;
 
   // Retirement age
-  const dob = intake.spouseDob; // We need the employee DOB — using Lead's DOB
-  // For now, estimate from SCD (assume started working at ~25)
-  const scdDate = new Date(intake.serviceComputationDate);
-  const estimatedBirthYear = scdDate.getFullYear() - 25;
-  const retirementAge = retirementDate.getFullYear() - estimatedBirthYear;
+  let retirementAge: number;
+  if (intake.dateOfBirth) {
+    const dob = new Date(intake.dateOfBirth);
+    retirementAge = retirementDate.getFullYear() - dob.getFullYear();
+  } else {
+    // Fallback: estimate from SCD (assume career start at ~25)
+    const scdDate = new Date(intake.serviceComputationDate);
+    retirementAge = retirementDate.getFullYear() - (scdDate.getFullYear() - 25);
+  }
 
   // High-3 average
   const highThree = calculateHighThree(
     intake.currentAnnualSalary,
     Math.max(0, yearsUntilRetirement),
-    intake.expectedSalaryIncrease || 2.5
+    intake.expectedSalaryIncrease || DEFAULT_SALARY_INCREASE_PCT
   );
 
   // Pension calculation
@@ -313,7 +313,7 @@ export function calculateRetirementProjection(
     const csrs = calculateCSRSPension(highThree, totalServiceCredit);
     annualPension = csrs.annual;
     monthlyPension = csrs.monthly;
-    multiplier = totalServiceCredit <= 5 ? 0.015 : totalServiceCredit <= 10 ? 0.0175 : 0.02;
+    multiplier = totalServiceCredit <= 5 ? CSRS_MULTIPLIER_FIRST_5 : totalServiceCredit <= 10 ? CSRS_MULTIPLIER_NEXT_5 : CSRS_MULTIPLIER_OVER_10;
   }
 
   // Survivor benefit reduction
@@ -359,11 +359,11 @@ export function calculateRetirementProjection(
   // Assume blended 7% return for projection if no specific returns given
   const avgReturn = intake.tspReturns
     ? Object.values(intake.tspReturns).reduce((a, b) => a + b, 0) / 5
-    : 7;
+    : DEFAULT_TSP_RETURN_PCT;
 
   // FERS agency match: 5% of salary biweekly
-  const biweeklySalary = intake.currentAnnualSalary / 26;
-  const agencyMatch = isFERS ? biweeklySalary * 0.05 : 0;
+  const biweeklySalary = intake.currentAnnualSalary / PAY_PERIODS_PER_YEAR;
+  const agencyMatch = isFERS ? biweeklySalary * FERS_AGENCY_MATCH : 0;
 
   const tspProjectedBalance = projectTSPBalance(
     tspCurrentTotal,
@@ -377,28 +377,28 @@ export function calculateRetirementProjection(
     tspProjectedBalance,
     intake.tspWithdrawalType || "Monthly Amount",
     intake.tspMonthlyDollarAmount,
-    25, // default life expectancy
+    DEFAULT_LIFE_EXPECTANCY_YEARS,
     intake.tspAnnuityInterestRate
   );
 
   // Insurance costs at retirement
-  const monthlyFehb = (intake.fehbBiweeklyPremium || 0) * 26 / 12;
-  const monthlyFegli = (intake.fegliBiweeklyPremium || 0) * 26 / 12;
+  const monthlyFehb = (intake.fehbBiweeklyPremium || 0) * PAY_PERIODS_PER_YEAR / MONTHS_PER_YEAR;
+  const monthlyFegli = (intake.fegliBiweeklyPremium || 0) * PAY_PERIODS_PER_YEAR / MONTHS_PER_YEAR;
 
   // Total monthly income
   const totalMonthlyGross =
     netMonthlyPension +
     (fersSupplementMonthly || 0) +
     tspMonthlyIncome +
-    (intake.otherTspRollover ? intake.otherTspRollover / (25 * 12) : 0) +
-    (intake.spouseIncome ? intake.spouseIncome / 12 : 0) +
-    (intake.rentalPropertyIncome ? intake.rentalPropertyIncome / 12 : 0) +
-    (intake.retirementJobIncome ? intake.retirementJobIncome / 12 : 0);
+    (intake.otherTspRollover ? intake.otherTspRollover / (DEFAULT_LIFE_EXPECTANCY_YEARS * MONTHS_PER_YEAR) : 0) +
+    (intake.spouseIncome ? intake.spouseIncome / MONTHS_PER_YEAR : 0) +
+    (intake.rentalPropertyIncome ? intake.rentalPropertyIncome / MONTHS_PER_YEAR : 0) +
+    (intake.retirementJobIncome ? intake.retirementJobIncome / MONTHS_PER_YEAR : 0);
 
   const totalMonthlyNet = totalMonthlyGross - monthlyFehb - monthlyFegli;
 
   // Current monthly net (from LES deductions)
-  const currentGrossMonthly = intake.currentAnnualSalary / 12;
+  const currentGrossMonthly = intake.currentAnnualSalary / MONTHS_PER_YEAR;
   const currentDeductions =
     (intake.lesRetirementDeduction || 0) +
     (intake.lesSsOasdi || 0) +
@@ -415,7 +415,7 @@ export function calculateRetirementProjection(
     retirementDate: intake.desiredRetirementDate,
     retirementAge,
     yearsOfService: Math.round(baseYears * 100) / 100,
-    sickLeaveCredit: Math.round(sickLeaveCredit * 12 * 100) / 100, // in months
+    sickLeaveCredit: Math.round(sickLeaveCredit * MONTHS_PER_YEAR * 100) / 100, // in months
     totalServiceCredit: Math.round(totalServiceCredit * 100) / 100,
     highThreeAverage: Math.round(highThree * 100) / 100,
     pensionMultiplier: multiplier,
@@ -435,7 +435,7 @@ export function calculateRetirementProjection(
     monthlyFegliPremium: Math.round(monthlyFegli * 100) / 100,
     totalMonthlyGross: Math.round(totalMonthlyGross * 100) / 100,
     totalMonthlyNet: Math.round(totalMonthlyNet * 100) / 100,
-    totalAnnualGross: Math.round(totalMonthlyGross * 12 * 100) / 100,
+    totalAnnualGross: Math.round(totalMonthlyGross * MONTHS_PER_YEAR * 100) / 100,
     currentMonthlyNet: Math.round(currentMonthlyNet * 100) / 100,
     incomeReplacementRatio:
       currentMonthlyNet > 0

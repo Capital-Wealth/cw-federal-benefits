@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { createServiceClient } from "@/lib/supabase/client";
 import { createIntake } from "@/lib/salesforce/connector";
+import { getAppUrl } from "@/config";
 import { v4 as uuidv4 } from "uuid";
 
 /**
@@ -64,7 +65,7 @@ export async function POST(request: NextRequest) {
 
   // Update SF record with the upload URL
   if (sfIntakeId) {
-    const portalUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://benefits.capitalwealth.com"}/portal/${token}`;
+    const portalUrl = `${getAppUrl()}/portal/${token}`;
     try {
       const { updateIntake } = await import("@/lib/salesforce/connector");
       await updateIntake(sfIntakeId, {
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest) {
     details: { clientName, clientEmail, sfIntakeId },
   });
 
-  const portalUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://benefits.capitalwealth.com"}/portal/${token}`;
+  const portalUrl = `${getAppUrl()}/portal/${token}`;
 
   return Response.json({
     sessionId: data.id,

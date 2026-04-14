@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSFConnection } from "@/lib/salesforce/connector";
+import { REPORT_BUILDER_CONFIG, SF_CONFIG, PAY_PERIODS_PER_YEAR } from "@/config";
 
 /**
  * GET /api/records?id=a2vXXXXXXXXXXXXX
@@ -14,7 +15,7 @@ import { getSFConnection } from "@/lib/salesforce/connector";
  * calls us instead of SF directly.
  */
 
-const API_KEY = process.env.REPORT_BUILDER_API_KEY;
+const API_KEY = REPORT_BUILDER_CONFIG.apiKey;
 
 export async function GET(request: NextRequest) {
   // Auth check
@@ -33,7 +34,7 @@ export async function GET(request: NextRequest) {
 
     // Query the full record with all fields Vision needs
     const record = await conn
-      .sobject("Federal_Benefits_Intake__c")
+      .sobject(SF_CONFIG.objectName)
       .retrieve(recordId);
 
     if (!record || !record.Id) {
@@ -88,10 +89,10 @@ export async function GET(request: NextRequest) {
 
       // TSP Contributions (convert biweekly to annual for Vision)
       tspAnnualContribution: record.TSP_Trad_Biweekly_Dollar__c
-        ? record.TSP_Trad_Biweekly_Dollar__c * 26
+        ? record.TSP_Trad_Biweekly_Dollar__c * PAY_PERIODS_PER_YEAR
         : null,
       tspRothContribution: record.TSP_Roth_Biweekly_Dollar__c
-        ? record.TSP_Roth_Biweekly_Dollar__c * 26
+        ? record.TSP_Roth_Biweekly_Dollar__c * PAY_PERIODS_PER_YEAR
         : null,
       tspCatchUp:
         (record.TSP_Trad_Catchup__c || 0) + (record.TSP_Roth_Catchup__c || 0),
@@ -266,7 +267,7 @@ export async function POST(request: NextRequest) {
     if (reportGenerated !== undefined) update.FedRetire_Report_Generated__c = reportGenerated;
     if (reportDate) update.FedRetire_Report_Date__c = reportDate;
 
-    await conn.sobject("Federal_Benefits_Intake__c").update(update as { Id: string });
+    await conn.sobject(SF_CONFIG.objectName).update(update as { Id: string });
     return Response.json({ success: true });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

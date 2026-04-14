@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { createServiceClient } from "@/lib/supabase/client";
 import { parseDocument } from "@/lib/parsing/document-parser";
+import { getAppUrl, UPLOAD_CONFIG, SUPABASE_CONFIG } from "@/config";
 import type { DocumentType } from "@/types";
 
 /**
@@ -25,23 +26,15 @@ export async function POST(request: NextRequest) {
   }
 
   // Validate file type (PDF, images, common doc formats)
-  const allowedTypes = [
-    "application/pdf",
-    "image/jpeg",
-    "image/png",
-    "image/tiff",
-    "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  ];
-  if (!allowedTypes.includes(file.type)) {
+  if (!UPLOAD_CONFIG.allowedMimeTypes.includes(file.type)) {
     return Response.json(
       { error: "File type not allowed. Please upload PDF, JPEG, PNG, or Word documents." },
       { status: 400 }
     );
   }
 
-  // Max 50MB
-  if (file.size > 50 * 1024 * 1024) {
+  // Max file size
+  if (file.size > UPLOAD_CONFIG.maxFileSizeBytes) {
     return Response.json(
       { error: "File too large. Maximum size is 50MB." },
       { status: 400 }
@@ -70,7 +63,7 @@ export async function POST(request: NextRequest) {
   const buffer = Buffer.from(await file.arrayBuffer());
 
   const { error: uploadError } = await supabase.storage
-    .from("federal-docs")
+    .from(SUPABASE_CONFIG.storageBucket)
     .upload(storagePath, buffer, {
       contentType: file.type,
       upsert: false,
@@ -129,7 +122,7 @@ export async function POST(request: NextRequest) {
 
   // Auto-trigger AI parsing in the background
   // Non-blocking — the upload response returns immediately
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const appUrl = getAppUrl();
   fetch(`${appUrl}/api/parse`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

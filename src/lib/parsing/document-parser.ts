@@ -13,6 +13,7 @@ import { writeFileSync, unlinkSync, mkdirSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import type { DocumentType, ParseResult, ParsedField } from "@/types";
+import { PARSE_CONFIG } from "@/config";
 
 // ============================================================
 // Document-Type-Specific Extraction Prompts
@@ -183,8 +184,8 @@ export async function parseDocument(
       `cat "${tempPath}" | claude -p "Analyze this ${documentType} document. ${prompt.replace(/"/g, '\\"')}"`,
       {
         encoding: "utf-8",
-        timeout: 120000, // 2 min max per document
-        maxBuffer: 10 * 1024 * 1024,
+        timeout: PARSE_CONFIG.timeoutMs,
+        maxBuffer: PARSE_CONFIG.maxBufferBytes,
         env: { ...process.env, LANG: "en_US.UTF-8" },
       }
     ).trim();
@@ -349,7 +350,7 @@ export function mergeParseResults(
 
   const fieldsNeedingReview: string[] = [...conflicts];
   for (const [fieldName, { confidence }] of fieldMap) {
-    if (confidence < 70) {
+    if (confidence < PARSE_CONFIG.confidenceThreshold) {
       fieldsNeedingReview.push(`${fieldName} (low confidence: ${confidence}%)`);
     }
   }
