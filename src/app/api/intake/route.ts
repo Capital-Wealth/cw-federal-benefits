@@ -21,9 +21,9 @@ export async function GET(request: NextRequest) {
 
   // Find the intake record by upload token
   const result = await conn.query(
-    `SELECT Id, Name, Client_Name__c, Status__c, Upload_Expires_At__c
+    `SELECT Id, Name, Status__c, Intake_Date__c
      FROM ${SF_CONFIG.objectName}
-     WHERE Upload_Token__c = '${token}'
+     WHERE Supabase_Folder_ID__c = '${token}'
      LIMIT 1`
   );
 
@@ -33,10 +33,14 @@ export async function GET(request: NextRequest) {
 
   const record = result.records[0] as Record<string, unknown>;
 
-  // Check expiration
-  const expiresAt = record.Upload_Expires_At__c as string;
-  if (expiresAt && new Date(expiresAt) < new Date()) {
-    return Response.json({ error: "Session expired" }, { status: 410 });
+  // Check expiration — 7 days from intake date
+  const intakeDate = record.Intake_Date__c as string;
+  if (intakeDate) {
+    const expires = new Date(intakeDate);
+    expires.setDate(expires.getDate() + 7);
+    if (expires < new Date()) {
+      return Response.json({ error: "Session expired" }, { status: 410 });
+    }
   }
 
   // Get uploaded documents from SF Files
@@ -45,7 +49,7 @@ export async function GET(request: NextRequest) {
   return Response.json({
     session: {
       id: record.Id,
-      client_name: record.Client_Name__c,
+      client_name: record.Name,
       status: record.Status__c,
     },
     documents: documents.map((d) => ({

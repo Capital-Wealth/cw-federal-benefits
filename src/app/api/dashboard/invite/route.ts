@@ -34,11 +34,8 @@ export async function POST(request: NextRequest) {
     const result = await conn.sobject(SF_CONFIG.objectName).create({
       Status__c: "Link Sent",
       Intake_Date__c: new Date().toISOString().split("T")[0],
-      Upload_Token__c: token,
-      Upload_Expires_At__c: expiresAt.toISOString(),
+      Supabase_Folder_ID__c: token,
       Document_Upload_URL__c: portalUrl,
-      Client_Name__c: clientName,
-      Client_Email__c: clientEmail,
     });
 
     if (!result.success) {

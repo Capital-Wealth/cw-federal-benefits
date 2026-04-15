@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
   // Look up the intake record by upload token
   const conn = await getSFConnection();
   const result = await conn.query(
-    `SELECT Id, Status__c, Upload_Expires_At__c FROM ${SF_CONFIG.objectName} WHERE Upload_Token__c = '${token}' LIMIT 1`
+    `SELECT Id, Status__c, Intake_Date__c FROM ${SF_CONFIG.objectName} WHERE Supabase_Folder_ID__c = '${token}' LIMIT 1`
   );
 
   if (result.records.length === 0) {
@@ -47,10 +47,14 @@ export async function POST(request: NextRequest) {
   const record = result.records[0] as Record<string, unknown>;
   const intakeId = record.Id as string;
 
-  // Check expiration
-  const expiresAt = record.Upload_Expires_At__c as string;
-  if (expiresAt && new Date(expiresAt) < new Date()) {
-    return Response.json({ error: "Upload link has expired" }, { status: 410 });
+  // Check expiration — 7 days from intake date
+  const intakeDate = record.Intake_Date__c as string;
+  if (intakeDate) {
+    const expires = new Date(intakeDate);
+    expires.setDate(expires.getDate() + 7);
+    if (expires < new Date()) {
+      return Response.json({ error: "Upload link has expired" }, { status: 410 });
+    }
   }
 
   // Upload to Salesforce Files
