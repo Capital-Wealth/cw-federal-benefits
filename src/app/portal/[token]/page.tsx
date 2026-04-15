@@ -9,7 +9,8 @@ interface UploadedDoc {
 
 interface SessionInfo {
   session: { client_name: string; status: string };
-  documents: { id: string; file_name: string; document_type: string; parsed: boolean }[];
+  documents: { id: string; file_name: string; document_type: string }[];
+  nextMeeting?: { date: string; type: string } | null;
 }
 
 export default function UploadPortal({ params }: { params: Promise<{ token: string }> }) {
@@ -88,6 +89,12 @@ export default function UploadPortal({ params }: { params: Promise<{ token: stri
 
       setUploading(false);
       setAllDone(true);
+
+      // Reload session to get meeting info
+      try {
+        const res = await fetch(`/api/intake?token=${token}`);
+        if (res.ok) setSessionInfo(await res.json());
+      } catch { /* silent */ }
     },
     [token]
   );
@@ -268,17 +275,75 @@ export default function UploadPortal({ params }: { params: Promise<{ token: stri
           </div>
         )}
 
-        {/* Success message after all uploads */}
+        {/* Success screen after all uploads */}
         {allDone && !uploading && (
-          <div className="mt-8 bg-emerald-50 border border-emerald-200 rounded-xl p-6 text-center">
-            <div className="text-4xl mb-3">&#9989;</div>
-            <h2 className="text-xl font-semibold text-emerald-900 mb-2">
-              Documents Uploaded Successfully
-            </h2>
-            <p className="text-sm text-emerald-700">
-              Your advisor has been notified and will review your documents shortly.
-              You can close this page or upload additional documents above.
-            </p>
+          <div className="mt-8 bg-white border border-emerald-200 rounded-xl overflow-hidden">
+            <div className="bg-emerald-700 px-6 py-8 text-center">
+              <div className="text-5xl mb-3">&#9989;</div>
+              <h2 className="text-2xl font-bold text-white mb-2">
+                You're All Set!
+              </h2>
+              <p className="text-emerald-100">
+                {allDocs.length} document{allDocs.length !== 1 ? "s" : ""} uploaded securely.
+                Your advisor has been notified.
+              </p>
+            </div>
+
+            <div className="px-6 py-6">
+              {/* Meeting info */}
+              {sessionInfo.nextMeeting ? (
+                <div className="bg-zinc-50 rounded-lg p-5 mb-5">
+                  <p className="text-sm font-medium text-zinc-500 mb-1">Your Upcoming Appointment</p>
+                  <p className="text-lg font-semibold text-zinc-900">
+                    {new Date(sessionInfo.nextMeeting.date).toLocaleDateString("en-US", {
+                      weekday: "long",
+                      year: "numeric",
+                      month: "long",
+                      day: "numeric",
+                    })}
+                  </p>
+                  <p className="text-sm text-zinc-600 mt-0.5">
+                    {sessionInfo.nextMeeting.type}
+                    {sessionInfo.nextMeeting.date.includes("T") && (
+                      <span>
+                        {" "}at{" "}
+                        {new Date(sessionInfo.nextMeeting.date).toLocaleTimeString("en-US", {
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                    )}
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-zinc-50 rounded-lg p-5 mb-5">
+                  <p className="text-sm text-zinc-600">
+                    Your advisor will review your documents and reach out to schedule your
+                    Retirement Money Map review session.
+                  </p>
+                </div>
+              )}
+
+              {/* What happens next */}
+              <div>
+                <p className="text-sm font-semibold text-zinc-900 mb-3">What Happens Next</p>
+                <div className="space-y-3">
+                  {[
+                    { step: "1", text: "Your advisor reviews your uploaded documents" },
+                    { step: "2", text: "Our system analyzes your federal benefits data" },
+                    { step: "3", text: "Your personalized Retirement Money Map report is generated" },
+                    { step: "4", text: "Your advisor walks you through the findings at your appointment" },
+                  ].map((item) => (
+                    <div key={item.step} className="flex items-start gap-3">
+                      <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                        <span className="text-xs font-bold text-emerald-700">{item.step}</span>
+                      </div>
+                      <p className="text-sm text-zinc-600">{item.text}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
