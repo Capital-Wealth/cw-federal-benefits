@@ -2,10 +2,11 @@
  * Salesforce Connector for Federal Benefits Intake
  *
  * Reads/writes Federal_Benefits_Intake__c records.
- * Supports three auth methods:
- * 1. SF_ACCESS_TOKEN env var (direct token — for dev, auto-refreshed by SF CLI)
- * 2. SF CLI token (reads from `sf org display` if available)
- * 3. Username/password flow (for production/deployed environments)
+ * Supports four auth methods (tried in order):
+ * 1. SF_ACCESS_TOKEN env var (direct token)
+ * 2. SF_REFRESH_TOKEN + SF_CLIENT_ID (OAuth refresh flow — never expires)
+ * 3. SF CLI token (reads from `sf org display` — local dev only)
+ * 4. Username/password flow (fallback)
  */
 
 import jsforce, { Connection } from "jsforce";
@@ -55,7 +56,24 @@ export async function getSFConnection(): Promise<Connection> {
     return connection;
   }
 
-  // Method 2: SF CLI token (local dev)
+  // Method 2: OAuth refresh token (production — never expires)
+  if (process.env.SF_REFRESH_TOKEN && process.env.SF_CLIENT_ID) {
+    const conn = new Connection({
+      oauth2: {
+        loginUrl: SF_CONFIG.loginUrl,
+        clientId: process.env.SF_CLIENT_ID,
+      },
+      instanceUrl,
+      refreshToken: process.env.SF_REFRESH_TOKEN,
+    });
+    // Force a token refresh to verify the connection
+    await conn.identity();
+    connection = conn;
+    tokenExpiresAt = Date.now() + SF_CONFIG.tokenCacheMs;
+    return connection;
+  }
+
+  // Method 3: SF CLI token (local dev)
   const cliAuth = getCliToken();
   if (cliAuth) {
     connection = new Connection({
@@ -66,7 +84,7 @@ export async function getSFConnection(): Promise<Connection> {
     return connection;
   }
 
-  // Method 3: Username/password (deployed environments)
+  // Method 4: Username/password (fallback)
   if (process.env.SF_USERNAME && process.env.SF_PASSWORD) {
     const conn = new Connection({
       loginUrl: SF_CONFIG.loginUrl,
@@ -82,7 +100,7 @@ export async function getSFConnection(): Promise<Connection> {
   }
 
   throw new Error(
-    "No Salesforce auth available. Set SF_ACCESS_TOKEN, authenticate SF CLI, or provide SF_USERNAME/SF_PASSWORD."
+    "No Salesforce auth available. Set SF_REFRESH_TOKEN+SF_CLIENT_ID, SF_ACCESS_TOKEN, authenticate SF CLI, or provide SF_USERNAME/SF_PASSWORD."
   );
 }
 
