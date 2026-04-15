@@ -1,16 +1,15 @@
 import { NextRequest } from "next/server";
-import { createServiceClient } from "@/lib/supabase/client";
-import { parseDocument } from "@/lib/parsing/document-parser";
-import { getAppUrl, UPLOAD_CONFIG, SUPABASE_CONFIG } from "@/config";
+import { getSFConnection } from "@/lib/salesforce/connector";
+import { uploadToSalesforce } from "@/lib/salesforce/files";
+import { getAppUrl, UPLOAD_CONFIG, SF_CONFIG } from "@/config";
 import type { DocumentType } from "@/types";
 
 /**
  * POST /api/upload — Upload a document for an intake session
  *
- * Accepts multipart/form-data with:
- * - file: the document
- * - token: session token
- * - documentType: LES, TSP_Statement, SF50, DD214, PSB, SS_Statement, Other
+ * Documents go directly to Salesforce Files (ContentVersion),
+ * linked to the Federal_Benefits_Intake__c record.
+ * No external storage — everything stays in Salesforce.
  */
 export async function POST(request: NextRequest) {
   const formData = await request.formData();
@@ -19,13 +18,10 @@ export async function POST(request: NextRequest) {
   const documentType = (formData.get("documentType") as DocumentType) || "Other";
 
   if (!file || !token) {
-    return Response.json(
-      { error: "file and token are required" },
-      { status: 400 }
-    );
+    return Response.json({ error: "file and token are required" }, { status: 400 });
   }
 
-  // Validate file type (PDF, images, common doc formats)
+  // Validate file type
   if (!UPLOAD_CONFIG.allowedMimeTypes.includes(file.type)) {
     return Response.json(
       { error: "File type not allowed. Please upload PDF, JPEG, PNG, or Word documents." },
@@ -35,107 +31,66 @@ export async function POST(request: NextRequest) {
 
   // Max file size
   if (file.size > UPLOAD_CONFIG.maxFileSizeBytes) {
-    return Response.json(
-      { error: "File too large. Maximum size is 50MB." },
-      { status: 400 }
-    );
+    return Response.json({ error: "File too large. Maximum size is 50MB." }, { status: 400 });
   }
 
-  const supabase = createServiceClient();
+  // Look up the intake record by upload token
+  const conn = await getSFConnection();
+  const result = await conn.query(
+    `SELECT Id, Status__c, Upload_Expires_At__c FROM ${SF_CONFIG.objectName} WHERE Upload_Token__c = '${token}' LIMIT 1`
+  );
 
-  // Verify session
-  const { data: session, error: sessionError } = await supabase
-    .from("intake_sessions")
-    .select("id, status, expires_at")
-    .eq("token", token)
-    .single();
-
-  if (sessionError || !session) {
-    return Response.json({ error: "Invalid session token" }, { status: 401 });
+  if (result.records.length === 0) {
+    return Response.json({ error: "Invalid upload token" }, { status: 401 });
   }
 
-  if (new Date(session.expires_at) < new Date()) {
-    return Response.json({ error: "Session expired" }, { status: 410 });
+  const record = result.records[0] as Record<string, unknown>;
+  const intakeId = record.Id as string;
+
+  // Check expiration
+  const expiresAt = record.Upload_Expires_At__c as string;
+  if (expiresAt && new Date(expiresAt) < new Date()) {
+    return Response.json({ error: "Upload link has expired" }, { status: 410 });
   }
 
-  // Upload to Supabase Storage
-  const storagePath = `${token}/${Date.now()}-${file.name}`;
+  // Upload to Salesforce Files
   const buffer = Buffer.from(await file.arrayBuffer());
 
-  const { error: uploadError } = await supabase.storage
-    .from(SUPABASE_CONFIG.storageBucket)
-    .upload(storagePath, buffer, {
-      contentType: file.type,
-      upsert: false,
+  try {
+    const { contentVersionId } = await uploadToSalesforce(
+      intakeId,
+      buffer,
+      file.name,
+      file.type,
+      documentType
+    );
+
+    // Update status to Docs Uploaded
+    if (record.Status__c === "Link Sent" || record.Status__c === "Draft") {
+      await conn.sobject(SF_CONFIG.objectName).update({
+        Id: intakeId,
+        Status__c: "Docs Uploaded",
+      } as { Id: string });
+    }
+
+    // Auto-trigger AI parsing in the background
+    const appUrl = getAppUrl();
+    fetch(`${appUrl}/api/parse`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ intakeId }),
+    }).catch((err) => {
+      console.error("Background parse trigger failed:", err);
     });
 
-  if (uploadError) {
-    console.error("Upload error:", uploadError);
-    return Response.json(
-      { error: "Failed to upload file" },
-      { status: 500 }
-    );
-  }
-
-  // Record in documents table
-  const { data: doc, error: docError } = await supabase
-    .from("documents")
-    .insert({
-      session_id: session.id,
-      file_name: file.name,
-      file_type: file.type,
-      file_size: file.size,
-      document_type: documentType,
-      storage_path: storagePath,
-    })
-    .select()
-    .single();
-
-  if (docError) {
-    console.error("Document record error:", docError);
-    return Response.json(
-      { error: "Failed to record document" },
-      { status: 500 }
-    );
-  }
-
-  // Audit log
-  await supabase.from("audit_log").insert({
-    session_id: session.id,
-    document_id: doc.id,
-    action: "upload",
-    actor: "client",
-    ip_address: request.headers.get("x-forwarded-for")?.split(",")[0] || null,
-    details: {
+    return Response.json({
+      contentVersionId,
       fileName: file.name,
-      fileType: file.type,
-      fileSize: file.size,
       documentType,
-    },
-  });
-
-  // Update session status
-  await supabase
-    .from("intake_sessions")
-    .update({ status: "uploaded" })
-    .eq("id", session.id);
-
-  // Auto-trigger AI parsing in the background
-  // Non-blocking — the upload response returns immediately
-  const appUrl = getAppUrl();
-  fetch(`${appUrl}/api/parse`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token, documentIds: [doc.id] }),
-  }).catch((err) => {
-    console.error("Background parse trigger failed:", err);
-  });
-
-  return Response.json({
-    documentId: doc.id,
-    fileName: file.name,
-    documentType,
-    uploadedAt: doc.uploaded_at,
-    parsing: true,
-  });
+      parsing: true,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return Response.json({ error: "Upload failed: " + msg }, { status: 500 });
+  }
 }

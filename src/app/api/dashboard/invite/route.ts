@@ -1,22 +1,16 @@
 import { NextRequest } from "next/server";
-import { createServiceClient } from "@/lib/supabase/client";
-import { createIntake, updateIntake } from "@/lib/salesforce/connector";
 import { getSFConnection } from "@/lib/salesforce/connector";
-import { getAppUrl } from "@/config";
+import { createIntake, updateIntake } from "@/lib/salesforce/connector";
+import { getAppUrl, SF_CONFIG } from "@/config";
 import { v4 as uuidv4 } from "uuid";
 
 /**
  * POST /api/dashboard/invite
  *
- * Creates an intake session and sends a secure upload email to the client.
+ * Creates an intake record in Salesforce and sends a secure upload
+ * email to the client. Everything stays in Salesforce — no external storage.
  *
  * Body: { clientName: string, clientEmail: string }
- *
- * Flow:
- * 1. Creates Federal_Benefits_Intake__c record in SF
- * 2. Creates session in Supabase
- * 3. Sends email to client via Salesforce (uses SF email service)
- * 4. Returns the intake details to the dashboard
  */
 export async function POST(request: NextRequest) {
   const { clientName, clientEmail } = await request.json();
@@ -29,50 +23,34 @@ export async function POST(request: NextRequest) {
   const appUrl = getAppUrl();
   const portalUrl = `${appUrl}/portal/${token}`;
 
-  // 1. Create SF record
+  // 7-day expiration
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + 7);
+
+  // Create the SF intake record with upload token
   let sfIntakeId: string | null = null;
   try {
-    sfIntakeId = await createIntake({
-      status: "Draft",
-      intakeDate: new Date().toISOString().split("T")[0],
+    const conn = await getSFConnection();
+    const result = await conn.sobject(SF_CONFIG.objectName).create({
+      Status__c: "Link Sent",
+      Intake_Date__c: new Date().toISOString().split("T")[0],
+      Upload_Token__c: token,
+      Upload_Expires_At__c: expiresAt.toISOString(),
+      Document_Upload_URL__c: portalUrl,
+      Client_Name__c: clientName,
+      Client_Email__c: clientEmail,
     });
-  } catch (err) {
-    console.error("SF intake creation failed:", err);
-  }
 
-  // 2. Create Supabase session
-  const supabase = createServiceClient();
-  const { data: session, error: sessionError } = await supabase
-    .from("intake_sessions")
-    .insert({
-      token,
-      client_name: clientName,
-      client_email: clientEmail,
-      sf_intake_id: sfIntakeId,
-      status: "active",
-    })
-    .select()
-    .single();
-
-  if (sessionError) {
-    console.error("Supabase session creation failed:", sessionError);
-    return Response.json({ error: "Failed to create session" }, { status: 500 });
-  }
-
-  // 3. Update SF record with portal URL
-  if (sfIntakeId) {
-    try {
-      await updateIntake(sfIntakeId, {
-        status: "Link Sent",
-        documentUploadUrl: portalUrl,
-        supabaseFolderId: token,
-      });
-    } catch (err) {
-      console.error("SF URL update failed:", err);
+    if (!result.success) {
+      throw new Error(JSON.stringify(result.errors));
     }
+    sfIntakeId = result.id;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return Response.json({ error: "Failed to create intake: " + msg }, { status: 500 });
   }
 
-  // 4. Send email to client via Salesforce
+  // Send email to client via Salesforce
   let emailSent = false;
   try {
     const conn = await getSFConnection();
@@ -93,7 +71,7 @@ Please upload any of the following documents you have available:
 - Social Security Statement
 - Personal Benefits Statement
 
-Your documents are encrypted in transit and at rest. Only your assigned advisor can access them.
+Your documents are encrypted and stored securely. Only your assigned advisor can access them.
 
 This link expires in 7 days. If you have any questions, please contact your advisor directly.
 
@@ -107,7 +85,7 @@ Capital Wealth Advisors`;
         inputs: [
           {
             emailAddresses: clientEmail,
-            emailSubject: "Capital Wealth — Secure Document Upload for Your Retirement Analysis",
+            emailSubject: "Capital Wealth — Secure Document Upload for Your Retirement Money Map",
             emailBody,
             senderType: "OrgWideEmailAddress",
           },
@@ -115,31 +93,18 @@ Capital Wealth Advisors`;
       }),
       headers: { "Content-Type": "application/json" },
     });
-
     emailSent = true;
   } catch (err) {
     console.error("SF email send failed:", err);
-    // Try fallback — still return success since the link was created
-    emailSent = false;
   }
 
-  // 5. Audit log
-  await supabase.from("audit_log").insert({
-    session_id: session.id,
-    action: "invite",
-    actor: "advisor",
-    details: { clientName, clientEmail, sfIntakeId, emailSent, portalUrl },
-  });
-
-  // Get the FBI record name for the response
+  // Get the FBI record name
   let intakeName = sfIntakeId || "pending";
-  if (sfIntakeId) {
-    try {
-      const conn = await getSFConnection();
-      const record = await conn.sobject("Federal_Benefits_Intake__c").retrieve(sfIntakeId);
-      intakeName = record.Name as string;
-    } catch { /* use ID */ }
-  }
+  try {
+    const conn = await getSFConnection();
+    const record = await conn.sobject(SF_CONFIG.objectName).retrieve(sfIntakeId!);
+    intakeName = record.Name as string;
+  } catch { /* use ID */ }
 
   return Response.json({
     success: true,
@@ -149,6 +114,6 @@ Capital Wealth Advisors`;
     emailSent,
     message: emailSent
       ? `Invitation emailed to ${clientEmail}`
-      : `Intake created. Email could not be sent — share this link manually: ${portalUrl}`,
+      : `Intake created. Copy this link and send manually: ${portalUrl}`,
   });
 }

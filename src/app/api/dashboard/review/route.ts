@@ -1,15 +1,17 @@
 import { NextRequest } from "next/server";
-import { createServiceClient } from "@/lib/supabase/client";
 import { getSFConnection } from "@/lib/salesforce/connector";
-import { SF_CONFIG, SUPABASE_CONFIG } from "@/config";
+import { listIntakeDocuments } from "@/lib/salesforce/files";
+import { SF_CONFIG } from "@/config";
 
 /**
  * GET /api/dashboard/review?id=a2vXXX
  *
  * Returns everything the advisor needs to review an intake:
  * - SF record fields (what the AI extracted)
- * - Uploaded documents list (from Supabase)
+ * - Uploaded documents from SF Files
  * - Confidence scores and flagged fields
+ *
+ * All data from Salesforce — no external dependencies.
  */
 export async function GET(request: NextRequest) {
   const intakeId = request.nextUrl.searchParams.get("id");
@@ -19,34 +21,14 @@ export async function GET(request: NextRequest) {
 
   try {
     const conn = await getSFConnection();
-
-    // Get the full SF record
     const record = await conn.sobject(SF_CONFIG.objectName).retrieve(intakeId);
     if (!record || !record.Id) {
       return Response.json({ error: "Record not found" }, { status: 404 });
     }
 
-    // Get uploaded documents from Supabase
-    const token = record.Supabase_Folder_ID__c as string;
-    let documents: unknown[] = [];
+    // Get documents from SF Files
+    const documents = await listIntakeDocuments(intakeId);
 
-    if (token) {
-      const supabase = createServiceClient();
-      const { data: docs } = await supabase
-        .from("documents")
-        .select("id, file_name, file_type, file_size, document_type, parsed, parsed_at, confidence, uploaded_at")
-        .eq("session_id", (
-          await supabase
-            .from("intake_sessions")
-            .select("id")
-            .eq("token", token)
-            .single()
-        ).data?.id || "");
-
-      documents = docs || [];
-    }
-
-    // Build the review payload — key fields grouped by category
     const review = {
       intake: {
         id: record.Id,
@@ -58,19 +40,23 @@ export async function GET(request: NextRequest) {
         reportGenerated: record.FedRetire_Report_Generated__c,
       },
 
-      documents,
+      documents: documents.map((d) => ({
+        id: d.contentVersionId,
+        file_name: d.fileName,
+        document_type: d.documentType,
+        file_size: d.fileSize,
+        uploaded_at: d.createdDate,
+      })),
 
-      // Document checklist — which doc types have been uploaded
       documentChecklist: {
-        LES: documents.some((d: any) => d.document_type === "LES"),
-        SF50: documents.some((d: any) => d.document_type === "SF50"),
-        TSP_Statement: documents.some((d: any) => d.document_type === "TSP_Statement"),
-        DD214: documents.some((d: any) => d.document_type === "DD214"),
-        PSB: documents.some((d: any) => d.document_type === "PSB"),
-        SS_Statement: documents.some((d: any) => d.document_type === "SS_Statement"),
+        LES: documents.some((d) => d.documentType === "LES"),
+        SF50: documents.some((d) => d.documentType === "SF50"),
+        TSP_Statement: documents.some((d) => d.documentType === "TSP_Statement"),
+        DD214: documents.some((d) => d.documentType === "DD214"),
+        PSB: documents.some((d) => d.documentType === "PSB"),
+        SS_Statement: documents.some((d) => d.documentType === "SS_Statement"),
       },
 
-      // Extracted fields grouped by category
       extracted: {
         employment: {
           retirementSystem: record.Retirement_System__c,
@@ -83,19 +69,13 @@ export async function GET(request: NextRequest) {
         },
         tsp: {
           traditionalTotal:
-            (record.TSP_Trad_G_Balance__c || 0) +
-            (record.TSP_Trad_F_Balance__c || 0) +
-            (record.TSP_Trad_C_Balance__c || 0) +
-            (record.TSP_Trad_S_Balance__c || 0) +
-            (record.TSP_Trad_I_Balance__c || 0) +
-            (record.TSP_Trad_L_Balance__c || 0),
+            (record.TSP_Trad_G_Balance__c || 0) + (record.TSP_Trad_F_Balance__c || 0) +
+            (record.TSP_Trad_C_Balance__c || 0) + (record.TSP_Trad_S_Balance__c || 0) +
+            (record.TSP_Trad_I_Balance__c || 0) + (record.TSP_Trad_L_Balance__c || 0),
           rothTotal:
-            (record.TSP_Roth_G_Balance__c || 0) +
-            (record.TSP_Roth_F_Balance__c || 0) +
-            (record.TSP_Roth_C_Balance__c || 0) +
-            (record.TSP_Roth_S_Balance__c || 0) +
-            (record.TSP_Roth_I_Balance__c || 0) +
-            (record.TSP_Roth_L_Balance__c || 0),
+            (record.TSP_Roth_G_Balance__c || 0) + (record.TSP_Roth_F_Balance__c || 0) +
+            (record.TSP_Roth_C_Balance__c || 0) + (record.TSP_Roth_S_Balance__c || 0) +
+            (record.TSP_Roth_I_Balance__c || 0) + (record.TSP_Roth_L_Balance__c || 0),
           biweeklyContribution: record.TSP_Trad_Biweekly_Dollar__c,
           rothBiweeklyContribution: record.TSP_Roth_Biweekly_Dollar__c,
           withdrawalType: record.TSP_Withdrawal_Type__c,

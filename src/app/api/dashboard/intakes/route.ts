@@ -5,7 +5,7 @@ import { SF_CONFIG } from "@/config";
  * GET /api/dashboard/intakes
  *
  * Returns all Federal_Benefits_Intake__c records for the dashboard.
- * Ordered by most recent first.
+ * All data from Salesforce — no external dependencies.
  */
 export async function GET() {
   try {
@@ -13,8 +13,9 @@ export async function GET() {
 
     const result = await conn.query(`
       SELECT Id, Name, Status__c, Document_Upload_URL__c,
-             Supabase_Folder_ID__c, AI_Parse_Confidence__c,
+             Upload_Token__c, AI_Parse_Confidence__c,
              FedRetire_Report_Generated__c, FedRetire_Report_Date__c,
+             Client_Name__c, Client_Email__c,
              Contact__c, Contact__r.Name,
              Lead__c, Lead__r.Name,
              CreatedDate
@@ -28,14 +29,16 @@ export async function GET() {
       name: r.Name,
       status: r.Status__c,
       portalUrl: r.Document_Upload_URL__c,
-      token: r.Supabase_Folder_ID__c,
+      token: r.Upload_Token__c,
       confidence: r.AI_Parse_Confidence__c,
       reportGenerated: r.FedRetire_Report_Generated__c,
       reportDate: r.FedRetire_Report_Date__c,
-      contactName:
+      clientName:
+        r.Client_Name__c ||
         (r.Contact__r as Record<string, unknown>)?.Name ||
         (r.Lead__r as Record<string, unknown>)?.Name ||
         null,
+      clientEmail: r.Client_Email__c,
       createdDate: r.CreatedDate,
     }));
 
