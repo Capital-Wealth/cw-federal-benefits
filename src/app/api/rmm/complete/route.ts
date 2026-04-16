@@ -6,42 +6,32 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{1
 /**
  * POST /api/rmm/complete
  *
- * Marks the intake as docs uploaded / questionnaire complete.
+ * Calls the Apex REST service to mark intake as complete.
+ * Bypasses REST API schema cache.
  */
 export async function POST(request: NextRequest) {
   const { token } = await request.json();
   if (!token) return Response.json({ error: "token required" }, { status: 400 });
-
-  if (!UUID_REGEX.test(token)) {
-    return Response.json({ error: "Invalid token format" }, { status: 400 });
-  }
-
-  const conn = await getSFConnection();
-
-  // Find the intake record — parameterized via jsforce .find() to prevent SOQL injection
-  const records = await conn
-    .sobject("Retirement_Intake__c")
-    .find({ Upload_Token__c: token }, ["Id"])
-    .limit(1)
-    .execute();
-
-  if (records.length === 0) {
-    return Response.json({ error: "Invalid token" }, { status: 401 });
-  }
-
-  const intakeId = (records[0] as Record<string, unknown>).Id as string;
+  if (!UUID_REGEX.test(token)) return Response.json({ error: "Invalid token format" }, { status: 400 });
 
   try {
-    await conn.sobject("Retirement_Intake__c").update({
-      Id: intakeId,
-      Status__c: "Docs Uploaded",
-      Docs_Uploaded__c: true,
-    } as { Id: string });
+    const conn = await getSFConnection();
 
-    return Response.json({ success: true });
+    const result = await conn.request({
+      method: "POST",
+      url: "/services/apexrest/rmm-intake",
+      body: JSON.stringify({ token, action: "complete" }),
+      headers: { "Content-Type": "application/json" },
+    }) as Record<string, unknown>;
+
+    if (result.success) {
+      return Response.json({ success: true });
+    } else {
+      return Response.json({ error: result.message }, { status: 500 });
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error("Failed to mark intake complete:", msg);
+    console.error("RMM complete error:", msg);
     return Response.json({ error: msg }, { status: 500 });
   }
 }
