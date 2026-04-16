@@ -97,7 +97,7 @@ for r in d.get('records', []):
       FNAME=$(basename "$PDF")
       log "  Parsing: ${FNAME}"
 
-      RESULT=$(cat "$PDF" | claude -p "Analyze this financial document. It could be a Social Security statement, 401(k)/IRA statement, brokerage statement, tax return, annuity statement, or insurance policy.
+      RESULT=$(claude -p "Read the PDF file at ${PDF}. Analyze this financial document. It could be a Social Security statement, 401(k)/IRA statement, brokerage statement, tax return, annuity statement, or insurance policy.
 
 Extract ALL relevant data. Return ONLY valid JSON:
 {
