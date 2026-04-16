@@ -34,21 +34,45 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "File too large. Maximum size is 50MB." }, { status: 400 });
   }
 
-  // Look up the intake record by upload token
+  // Look up the intake record by upload token — check both Federal and non-Federal objects
   const conn = await getSFConnection();
-  const result = await conn.query(
+
+  // Try Federal first
+  let intakeId: string | null = null;
+  let intakeDate: string | null = null;
+  let intakeObject: string = SF_CONFIG.objectName;
+
+  const federalResult = await conn.query(
     `SELECT Id, Status__c, Intake_Date__c FROM ${SF_CONFIG.objectName} WHERE Supabase_Folder_ID__c = '${token}' LIMIT 1`
   );
 
-  if (result.records.length === 0) {
+  if (federalResult.records.length > 0) {
+    const record = federalResult.records[0] as Record<string, unknown>;
+    intakeId = record.Id as string;
+    intakeDate = record.Intake_Date__c as string;
+  } else {
+    // Try non-Federal (Retirement_Intake__c) via Apex REST service
+    try {
+      const rmmResult = await conn.request({
+        method: "GET",
+        url: `/services/apexrest/rmm-intake?token=${encodeURIComponent(token)}`,
+        headers: { "Content-Type": "application/json" },
+      }) as Record<string, unknown>;
+
+      if (rmmResult.valid && rmmResult.intakeId) {
+        intakeId = rmmResult.intakeId as string;
+        intakeObject = "Retirement_Intake__c";
+      }
+    } catch {
+      // RMM service not available — fall through to error
+    }
+  }
+
+  if (!intakeId) {
     return Response.json({ error: "Invalid upload token" }, { status: 401 });
   }
 
-  const record = result.records[0] as Record<string, unknown>;
-  const intakeId = record.Id as string;
-
   // Check expiration — 7 days from intake date
-  const intakeDate = record.Intake_Date__c as string;
   if (intakeDate) {
     const expires = new Date(intakeDate);
     expires.setDate(expires.getDate() + 7);
@@ -70,11 +94,13 @@ export async function POST(request: NextRequest) {
     );
 
     // Update status to Docs Uploaded
-    if (record.Status__c === "Link Sent" || record.Status__c === "Draft") {
-      await conn.sobject(SF_CONFIG.objectName).update({
+    try {
+      await conn.sobject(intakeObject).update({
         Id: intakeId,
         Status__c: "Docs Uploaded",
       } as { Id: string });
+    } catch {
+      // Status update may fail if fields aren't visible (schema cache) — upload still succeeded
     }
 
     // Auto-trigger AI parsing in the background
