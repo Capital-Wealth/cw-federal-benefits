@@ -576,13 +576,13 @@ function Shell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-zinc-50">
       <header className="bg-white border-b border-zinc-200 px-8 py-4">
         <div className="max-w-3xl mx-auto">
-          <img src="https://www.capitalwealth.com/assets/images/logos/logo-horizontal-color.png" alt="Capital Wealth Advisors" className="h-8" />
+          <img src="https://www.capitalwealth.com/assets/images/logos/logo-horizontal-color.png" alt="Capital Wealth" className="h-8" />
         </div>
       </header>
       <main className="max-w-3xl mx-auto px-8 py-8">{children}</main>
       <footer className="border-t border-zinc-200 bg-white px-8 py-6 mt-12">
         <div className="max-w-3xl mx-auto text-center">
-          <p className="text-xs text-zinc-400">Capital Wealth Advisors &middot; Your responses are confidential and only used to prepare for your visit.</p>
+          <p className="text-xs text-zinc-400">Capital Wealth &middot; Your responses are confidential and only used to prepare for your visit.</p>
         </div>
       </footer>
     </div>
