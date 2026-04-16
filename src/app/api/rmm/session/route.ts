@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
 import { getSFConnection } from "@/lib/salesforce/connector";
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SF_ID_REGEX = /^[a-zA-Z0-9]{15,18}$/;
+
 /**
  * GET /api/rmm/session?token=xxx
  *
@@ -11,22 +14,35 @@ export async function GET(request: NextRequest) {
   const token = request.nextUrl.searchParams.get("token");
   if (!token) return Response.json({ error: "token required" }, { status: 400 });
 
+  if (!UUID_REGEX.test(token)) {
+    return Response.json({ error: "Invalid token format" }, { status: 400 });
+  }
+
   const conn = await getSFConnection();
 
-  // Find the intake record
-  const result = await conn.query(
-    `SELECT Id, Name, Status__c, Intake_Date__c, Contact__c,
-            Planned_Retirement_Age__c, Is_Federal_Employee__c
-     FROM Retirement_Intake__c
-     WHERE Upload_Token__c = '${token}'
-     LIMIT 1`
-  );
+  // Find the intake record — parameterized via jsforce .find() to prevent SOQL injection
+  const records = await conn
+    .sobject("Retirement_Intake__c")
+    .find(
+      { Upload_Token__c: token },
+      [
+        "Id",
+        "Name",
+        "Status__c",
+        "Intake_Date__c",
+        "Contact__c",
+        "Planned_Retirement_Age__c",
+        "Is_Federal_Employee__c",
+      ]
+    )
+    .limit(1)
+    .execute();
 
-  if (result.records.length === 0) {
+  if (records.length === 0) {
     return Response.json({ error: "Session not found" }, { status: 404 });
   }
 
-  const record = result.records[0] as Record<string, unknown>;
+  const record = records[0] as Record<string, unknown>;
 
   // Check expiration (7 days)
   const intakeDate = record.Intake_Date__c as string;
@@ -42,28 +58,34 @@ export async function GET(request: NextRequest) {
   let prefill: Record<string, unknown> = {};
   const contactId = record.Contact__c as string;
   if (contactId) {
-    try {
-      const contactResult = await conn.query(
-        `SELECT FirstName, LastName, Email, Birthdate, MailingState,
-                Account.PersonEmail, Account.Name
-         FROM Contact WHERE Id = '${contactId}' LIMIT 1`
-      );
-      if (contactResult.records.length > 0) {
-        const c = contactResult.records[0] as Record<string, unknown>;
-        prefill = {
-          firstName: c.FirstName,
-          lastName: c.LastName,
-          email: c.Email,
-          dateOfBirth: c.Birthdate,
-          state: c.MailingState,
-        };
+    if (!SF_ID_REGEX.test(contactId)) {
+      console.error(`Invalid Contact ID format: ${contactId}`);
+    } else {
+      try {
+        const contactResult = await conn.query(
+          `SELECT FirstName, LastName, Email, Birthdate, MailingState,
+                  Account.PersonEmail, Account.Name
+           FROM Contact WHERE Id = '${contactId}' LIMIT 1`
+        );
+        if (contactResult.records.length > 0) {
+          const c = contactResult.records[0] as Record<string, unknown>;
+          prefill = {
+            firstName: c.FirstName,
+            lastName: c.LastName,
+            email: c.Email,
+            dateOfBirth: c.Birthdate,
+            state: c.MailingState,
+          };
+        }
+      } catch (err) {
+        console.error("Failed to load contact prefill:", err);
       }
-    } catch { /* silent */ }
+    }
   }
 
   // Look up next meeting
   let nextMeeting = null;
-  if (contactId) {
+  if (contactId && SF_ID_REGEX.test(contactId)) {
     try {
       const meetingResult = await conn.query(
         `SELECT Id, Name, Meeting_Date__c, Meeting_Type__c
@@ -75,7 +97,9 @@ export async function GET(request: NextRequest) {
         const m = meetingResult.records[0] as Record<string, unknown>;
         nextMeeting = { date: m.Meeting_Date__c, type: m.Meeting_Type__c || "Appointment" };
       }
-    } catch { /* silent */ }
+    } catch (err) {
+      console.error("Failed to load next meeting:", err);
+    }
   }
 
   return Response.json({

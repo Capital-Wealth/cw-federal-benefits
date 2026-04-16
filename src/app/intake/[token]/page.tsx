@@ -162,8 +162,15 @@ export default function IntakePortal({ params }: { params: Promise<{ token: stri
       formData.append("documentType", "Other");
       try {
         const res = await fetch("/api/upload", { method: "POST", body: formData });
-        if (res.ok) setUploadedFiles((prev) => [...prev, file.name]);
-      } catch { /* silent */ }
+        if (res.ok) {
+          setUploadedFiles((prev) => [...prev, file.name]);
+        } else {
+          const data = await res.json().catch(() => ({}));
+          setError(`Failed to upload ${file.name}: ${data.error || "Unknown error"}`);
+        }
+      } catch {
+        setError(`Failed to upload ${file.name}. Please try again.`);
+      }
     }
     setUploading(false);
   }, [token]);
@@ -180,18 +187,27 @@ export default function IntakePortal({ params }: { params: Promise<{ token: stri
 
   const handleFinish = async () => {
     setSubmitting(true);
+    setError(null);
     try {
-      await fetch("/api/rmm/complete", {
+      const completeRes = await fetch("/api/rmm/complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token }),
       });
+      if (!completeRes.ok) {
+        const data = await completeRes.json().catch(() => ({}));
+        setError(data.error || "Failed to submit. Please try again.");
+        setSubmitting(false);
+        return;
+      }
       // Reload session to get meeting info
       const res = await fetch(`/api/rmm/session?token=${token}`);
       if (res.ok) setSession(await res.json());
-    } catch { /* silent */ }
+      setStep(3);
+    } catch {
+      setError("Connection failed. Please check your internet and try again.");
+    }
     setSubmitting(false);
-    setStep(3);
   };
 
   // ============================================================

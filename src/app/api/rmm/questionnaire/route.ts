@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { getSFConnection } from "@/lib/salesforce/connector";
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * POST /api/rmm/questionnaire
  *
@@ -12,18 +14,24 @@ export async function POST(request: NextRequest) {
 
   if (!token) return Response.json({ error: "token required" }, { status: 400 });
 
+  if (!UUID_REGEX.test(token)) {
+    return Response.json({ error: "Invalid token format" }, { status: 400 });
+  }
+
   const conn = await getSFConnection();
 
-  // Find the intake record
-  const result = await conn.query(
-    `SELECT Id FROM Retirement_Intake__c WHERE Upload_Token__c = '${token}' LIMIT 1`
-  );
+  // Find the intake record — parameterized via jsforce .find() to prevent SOQL injection
+  const records = await conn
+    .sobject("Retirement_Intake__c")
+    .find({ Upload_Token__c: token }, ["Id"])
+    .limit(1)
+    .execute();
 
-  if (result.records.length === 0) {
+  if (records.length === 0) {
     return Response.json({ error: "Invalid token" }, { status: 401 });
   }
 
-  const intakeId = (result.records[0] as Record<string, unknown>).Id as string;
+  const intakeId = (records[0] as Record<string, unknown>).Id as string;
 
   // Map form answers to SF fields
   const update: Record<string, unknown> = {
@@ -41,7 +49,7 @@ export async function POST(request: NextRequest) {
   if (answers.jobTitle) update.Job_Title__c = answers.jobTitle;
   if (answers.annualIncome) update.Annual_Income__c = parseFloat(answers.annualIncome);
   if (answers.employmentStatus) update.Employment_Status__c = answers.employmentStatus;
-  if (answers.totalInvestableAssets) update.Total_Investable_Assets__c = null; // Range stored as text
+  if (answers.totalInvestableAssets) update.Total_Investable_Assets__c = answers.totalInvestableAssets;
   if (answers.monthlyExpenses) update.Monthly_Expenses__c = parseFloat(answers.monthlyExpenses);
   if (answers.desiredRetirementIncome) update.Desired_Retirement_Income__c = parseFloat(answers.desiredRetirementIncome);
   if (answers.receivingSS) update.Receiving_Social_Security__c = answers.receivingSS;
@@ -62,6 +70,22 @@ export async function POST(request: NextRequest) {
     return Response.json({ success: true });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+
+    // If Total_Investable_Assets__c is Currency but we sent a string, retry without it
+    if (msg.includes("Total_Investable_Assets__c") || msg.includes("INVALID_TYPE")) {
+      console.error("Total_Investable_Assets__c rejected (likely Currency field vs string value), retrying without it:", msg);
+      delete update.Total_Investable_Assets__c;
+      try {
+        await conn.sobject("Retirement_Intake__c").update(update as { Id: string });
+        return Response.json({ success: true, warning: "totalInvestableAssets could not be saved (field type mismatch)" });
+      } catch (retryErr) {
+        const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+        console.error("Questionnaire save failed on retry:", retryMsg);
+        return Response.json({ error: retryMsg }, { status: 500 });
+      }
+    }
+
+    console.error("Questionnaire save failed:", msg);
     return Response.json({ error: msg }, { status: 500 });
   }
 }
