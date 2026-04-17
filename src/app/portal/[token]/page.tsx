@@ -524,22 +524,30 @@ export default function IntakePortal({ params }: { params: Promise<{ token: stri
       <div className="max-w-2xl mx-auto">
         <div className="bg-[#16253C] text-white rounded-xl overflow-hidden mb-8 px-8 py-10 text-center">
           <img src="https://www.capitalwealth.com/assets/images/logos/logo-horizontal-white.png" alt="Capital Wealth" className="h-10 mx-auto mb-4" />
-          <div className="text-5xl mb-4">&#9989;</div>
-          <h1 className="text-3xl font-bold mb-2">Thank You!</h1>
+          <h1 className="text-3xl font-bold mb-3">Thank You!</h1>
           <p className="text-[#C7A356] text-lg">We appreciate you taking the time to complete this.</p>
         </div>
 
-        <div className="bg-white rounded-xl border border-zinc-200 p-6 mb-6">
+        {/* Meeting confirmation — primary focus */}
+        <div className="bg-white rounded-xl border border-zinc-200 p-8 mb-6">
           {sessionInfo.nextMeeting ? (
-            <div className="text-center mb-4">
-              <p className="text-sm text-zinc-500 mb-1">Your Upcoming Appointment</p>
-              <p className="text-xl font-semibold text-zinc-900">
-                {new Date(sessionInfo.nextMeeting.date).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+            <div className="text-center">
+              <p className="text-sm font-medium text-zinc-500 mb-3">Your Meeting Is Confirmed</p>
+              <p className="text-2xl font-bold text-zinc-900 mb-1">
+                {new Date(sessionInfo.nextMeeting.date).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
               </p>
-              <p className="text-sm text-zinc-600">{sessionInfo.nextMeeting.type}</p>
+              {sessionInfo.nextMeeting.date.includes("T") && (
+                <p className="text-lg font-semibold text-[#16253C]">
+                  {new Date(sessionInfo.nextMeeting.date).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                </p>
+              )}
+              <p className="text-sm text-zinc-500 mt-2">{sessionInfo.nextMeeting.type}</p>
             </div>
           ) : (
-            <p className="text-center text-zinc-600">Your advisor will review your information and reach out soon.</p>
+            <div className="text-center">
+              <p className="text-sm font-medium text-zinc-500 mb-2">Next Step</p>
+              <p className="text-zinc-700">Your advisor will reach out to confirm your meeting date and time.</p>
+            </div>
           )}
         </div>
 
