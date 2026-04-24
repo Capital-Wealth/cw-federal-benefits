@@ -103,12 +103,13 @@ export async function POST(request: NextRequest) {
       // Status update may fail if fields aren't visible (schema cache) — upload still succeeded
     }
 
-    // Auto-trigger AI parsing in the background
+    // Auto-trigger AI parsing in the background — pass the intake object type
+    // so /api/parse knows whether to run the federal or general pipeline.
     const appUrl = getAppUrl();
     fetch(`${appUrl}/api/parse`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ intakeId }),
+      body: JSON.stringify({ intakeId, intakeObject }),
     }).catch((err) => {
       console.error("Background parse trigger failed:", err);
     });

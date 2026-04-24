@@ -214,11 +214,11 @@ export default function IntakePortal({ params }: { params: Promise<{ token: stri
     setSubmitting(true);
     setError(null);
     try {
-      const endpoint = isFederal ? "/api/rmm/complete" : "/api/rmm/complete";
+      const endpoint = isFederal ? "/api/intake" : "/api/rmm/complete";
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token }),
+        body: JSON.stringify({ token, action: "complete" }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -268,7 +268,7 @@ export default function IntakePortal({ params }: { params: Promise<{ token: stri
 
         <div className="max-w-2xl mx-auto">
           <p className="text-center text-zinc-600 mb-1 font-semibold">We believe in relationships, not transactions.</p>
-          <p className="text-center text-zinc-500 text-sm mb-8">
+          <p className="text-center text-zinc-500 text-base mb-8">
             Spend 2-3 minutes answering a few quick questions so your advisor can prepare for your meeting.
           </p>
 
@@ -281,23 +281,23 @@ export default function IntakePortal({ params }: { params: Promise<{ token: stri
           <div className="space-y-5">
             {/* Preferred Name */}
             <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">What do you prefer to be called?</label>
+              <label className="block text-base font-medium text-zinc-700 mb-1">What do you prefer to be called?</label>
               <input type="text" value={form.preferredName} onChange={(e) => updateForm("preferredName", e.target.value)}
-                placeholder="e.g. Chip, Bobby, etc." className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm" />
+                placeholder="e.g. Chip, Bobby, etc." className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-base" />
             </div>
 
             {/* Age */}
             <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">How old are you?</label>
+              <label className="block text-base font-medium text-zinc-700 mb-1">How old are you?</label>
               <input type="number" value={form.age} onChange={(e) => updateForm("age", e.target.value)}
-                placeholder="e.g. 57" className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm" />
+                placeholder="e.g. 57" className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-base" />
             </div>
 
             {/* Marital Status */}
             <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">Marital status</label>
+              <label className="block text-base font-medium text-zinc-700 mb-1">Marital status</label>
               <select value={form.maritalStatus} onChange={(e) => updateForm("maritalStatus", e.target.value)}
-                className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm bg-white">
+                className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-base bg-white">
                 <option value="">Select...</option>
                 <option value="Single">Single</option>
                 <option value="Married">Married</option>
@@ -311,25 +311,25 @@ export default function IntakePortal({ params }: { params: Promise<{ token: stri
             {isMarried && (
               <div className="bg-zinc-50 rounded-lg p-4 space-y-4 border border-zinc-200">
                 <div>
-                  <label className="block text-sm font-medium text-zinc-700 mb-1">Spouse / partner name</label>
+                  <label className="block text-base font-medium text-zinc-700 mb-1">Spouse / partner name</label>
                   <input type="text" value={form.spouseName} onChange={(e) => updateForm("spouseName", e.target.value)}
-                    className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm" />
+                    className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-base" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-zinc-700 mb-1">Spouse preferred name</label>
+                  <label className="block text-base font-medium text-zinc-700 mb-1">Spouse preferred name</label>
                   <input type="text" value={form.spousePreferredName} onChange={(e) => updateForm("spousePreferredName", e.target.value)}
-                    placeholder="What do they go by?" className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm" />
+                    placeholder="What do they go by?" className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-base" />
                 </div>
               </div>
             )}
 
             {/* Employment */}
             <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">Are you currently working or retired?</label>
+              <label className="block text-base font-medium text-zinc-700 mb-1">Are you currently working or retired?</label>
               <div className="flex gap-3">
                 {["Working", "Retired"].map((opt) => (
                   <button key={opt} type="button" onClick={() => updateForm("employmentStatus", opt)}
-                    className={`flex-1 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
+                    className={`flex-1 py-2.5 rounded-lg border text-base font-medium transition-colors ${
                       form.employmentStatus === opt
                         ? "bg-[#16253C] text-white border-[#16253C]"
                         : "bg-white text-zinc-700 border-zinc-300 hover:border-[#C7A356]"
@@ -341,19 +341,19 @@ export default function IntakePortal({ params }: { params: Promise<{ token: stri
             {/* Employer — conditional */}
             {isEmployed && (
               <div>
-                <label className="block text-sm font-medium text-zinc-700 mb-1">Who is your employer?</label>
+                <label className="block text-base font-medium text-zinc-700 mb-1">Who is your employer?</label>
                 <input type="text" value={form.employerName} onChange={(e) => updateForm("employerName", e.target.value)}
-                  className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm" />
+                  className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-base" />
               </div>
             )}
 
             {/* Has Advisor */}
             <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">Do you currently work with a financial advisor?</label>
+              <label className="block text-base font-medium text-zinc-700 mb-1">Do you currently work with a financial advisor?</label>
               <div className="flex gap-3">
                 {["Yes", "No"].map((opt) => (
                   <button key={opt} type="button" onClick={() => updateForm("hasAdvisor", opt)}
-                    className={`flex-1 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
+                    className={`flex-1 py-2.5 rounded-lg border text-base font-medium transition-colors ${
                       form.hasAdvisor === opt
                         ? "bg-[#16253C] text-white border-[#16253C]"
                         : "bg-white text-zinc-700 border-zinc-300 hover:border-[#C7A356]"
@@ -366,11 +366,11 @@ export default function IntakePortal({ params }: { params: Promise<{ token: stri
             {hasAdvisor && (
               <div className="bg-zinc-50 rounded-lg p-4 space-y-4 border border-zinc-200">
                 <div>
-                  <label className="block text-sm font-medium text-zinc-700 mb-1">Does your advisor represent your employer-sponsored plan?</label>
+                  <label className="block text-base font-medium text-zinc-700 mb-1">Does your advisor represent your employer-sponsored plan?</label>
                   <div className="flex gap-3">
                     {["Yes", "No", "Not sure"].map((opt) => (
                       <button key={opt} type="button" onClick={() => updateForm("advisorRepresentsEmployer", opt)}
-                        className={`flex-1 py-2 rounded-lg border text-sm transition-colors ${
+                        className={`flex-1 py-2 rounded-lg border text-base transition-colors ${
                           form.advisorRepresentsEmployer === opt
                             ? "bg-[#16253C] text-white border-[#16253C]"
                             : "bg-white text-zinc-600 border-zinc-300"
@@ -379,9 +379,9 @@ export default function IntakePortal({ params }: { params: Promise<{ token: stri
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-zinc-700 mb-1">Which best describes your relationship with your current advisor?</label>
+                  <label className="block text-base font-medium text-zinc-700 mb-1">Which best describes your relationship with your current advisor?</label>
                   <select value={form.advisorRelationship} onChange={(e) => updateForm("advisorRelationship", e.target.value)}
-                    className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm bg-white">
+                    className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-base bg-white">
                     <option value="">Select...</option>
                     <option value="Would never switch">I would never switch advisors</option>
                     <option value="Looking to change">I'm looking to change advisors</option>
@@ -393,9 +393,9 @@ export default function IntakePortal({ params }: { params: Promise<{ token: stri
 
             {/* Total Investable Assets */}
             <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">Approximate total investable assets</label>
+              <label className="block text-base font-medium text-zinc-700 mb-1">Approximate total investable assets</label>
               <select value={form.totalInvestableAssets} onChange={(e) => updateForm("totalInvestableAssets", e.target.value)}
-                className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm bg-white">
+                className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-base bg-white">
                 <option value="">Select range...</option>
                 {ASSET_RANGES.map((r) => <option key={r} value={r}>{r}</option>)}
               </select>
@@ -403,11 +403,11 @@ export default function IntakePortal({ params }: { params: Promise<{ token: stri
 
             {/* Financial Concerns */}
             <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-2">What are you most interested in? <span className="text-zinc-400 font-normal">(select all that apply)</span></label>
+              <label className="block text-base font-medium text-zinc-700 mb-2">What are you most interested in? <span className="text-zinc-400 font-normal">(select all that apply)</span></label>
               <div className="grid grid-cols-2 gap-2">
                 {CONCERN_OPTIONS.map((c) => (
                   <button key={c} type="button" onClick={() => toggleConcern(c)}
-                    className={`text-left text-sm px-3 py-2.5 rounded-lg border transition-colors ${
+                    className={`text-left text-base px-3 py-2.5 rounded-lg border transition-colors ${
                       form.concerns.includes(c)
                         ? "bg-[#16253C] text-white border-[#16253C]"
                         : "bg-white border-zinc-300 hover:border-[#C7A356] text-zinc-700"
@@ -417,7 +417,7 @@ export default function IntakePortal({ params }: { params: Promise<{ token: stri
             </div>
           </div>
 
-          {error && <div className="mt-4 bg-red-50 border border-red-200 rounded-lg px-4 py-3"><p className="text-sm text-red-800">{error}</p></div>}
+          {error && <div className="mt-4 bg-red-50 border border-red-200 rounded-lg px-4 py-3"><p className="text-base text-red-800">{error}</p></div>}
 
           <button onClick={handleSubmitQuestionnaire} disabled={submitting}
             className="w-full mt-8 py-3 bg-[#16253C] text-white rounded-lg font-semibold text-lg hover:bg-[#1E3456] disabled:opacity-50">
@@ -449,7 +449,7 @@ export default function IntakePortal({ params }: { params: Promise<{ token: stri
           <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 mb-6">
             <div className="flex items-start gap-3">
               <span className="text-emerald-700">&#128274;</span>
-              <p className="text-sm text-emerald-800">Your documents are <strong>encrypted</strong> in transit and at rest. Only your assigned advisor can access them.</p>
+              <p className="text-base text-emerald-800">Your documents are <strong>encrypted</strong> in transit and at rest. Only your assigned advisor can access them.</p>
             </div>
           </div>
 
@@ -464,7 +464,7 @@ export default function IntakePortal({ params }: { params: Promise<{ token: stri
               <div>
                 <div className="text-4xl mb-3">&#128196;</div>
                 <p className="text-zinc-900 font-medium text-lg mb-1">Drop all your documents here</p>
-                <p className="text-sm text-zinc-500 mb-4">PDF, JPEG, or PNG — multiple files at once</p>
+                <p className="text-base text-zinc-500 mb-4">PDF, JPEG, or PNG — multiple files at once</p>
                 <label className="inline-flex px-6 py-3 bg-[#16253C] text-white rounded-lg font-medium cursor-pointer hover:bg-[#1E3456]">
                   Choose Files
                   <input ref={fileInputRef} type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png" multiple onChange={handleFileSelect} />
@@ -473,12 +473,12 @@ export default function IntakePortal({ params }: { params: Promise<{ token: stri
             )}
           </div>
 
-          {/* What to upload — different per type */}
+          {/* What to upload — doc list varies by flow, label does not */}
           <div className="bg-white rounded-lg border border-zinc-200 p-5 mb-6">
-            <p className="text-sm font-semibold text-zinc-900 mb-3">
-              {isFederal ? "Federal benefits documents we need:" : "Documents we need:"}
+            <p className="text-base font-semibold text-zinc-900 mb-3">
+              Documents for your Capital Wealth Vault:
             </p>
-            <div className="grid grid-cols-2 gap-2 text-sm">
+            <div className="grid grid-cols-2 gap-2 text-base">
               {docList.map((doc) => (
                 <div key={doc} className="flex items-center gap-2">
                   <span className="text-[#C7A356]">&#9679;</span>
@@ -491,9 +491,9 @@ export default function IntakePortal({ params }: { params: Promise<{ token: stri
           {/* Uploaded files */}
           {uploadedFiles.length > 0 && (
             <div className="mb-6">
-              <p className="text-sm font-semibold text-zinc-900 mb-2">Uploaded ({successUploads})</p>
+              <p className="text-base font-semibold text-zinc-900 mb-2">Uploaded ({successUploads})</p>
               {uploadedFiles.map((f, i) => (
-                <div key={i} className="flex items-center gap-2 text-sm py-1">
+                <div key={i} className="flex items-center gap-2 text-base py-1">
                   <span className={f.status === "uploaded" ? "text-emerald-600" : "text-amber-500"}>
                     {f.status === "uploaded" ? "\u2713" : "\u23F3"}
                   </span>
@@ -503,7 +503,7 @@ export default function IntakePortal({ params }: { params: Promise<{ token: stri
             </div>
           )}
 
-          {error && <div className="mb-4 bg-red-50 border border-red-200 rounded-lg px-4 py-3"><p className="text-sm text-red-800">{error}</p></div>}
+          {error && <div className="mb-4 bg-red-50 border border-red-200 rounded-lg px-4 py-3"><p className="text-base text-red-800">{error}</p></div>}
 
           <div className="flex gap-4">
             <button onClick={() => setStep(1)}
@@ -532,7 +532,7 @@ export default function IntakePortal({ params }: { params: Promise<{ token: stri
         <div className="bg-white rounded-xl border border-zinc-200 p-8 mb-6">
           {sessionInfo.nextMeeting ? (
             <div className="text-center">
-              <p className="text-sm font-medium text-zinc-500 mb-3">Your Meeting Is Confirmed</p>
+              <p className="text-base font-medium text-zinc-500 mb-3">Your Meeting Is Confirmed</p>
               <p className="text-2xl font-bold text-zinc-900 mb-1">
                 {new Date(sessionInfo.nextMeeting.date).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
               </p>
@@ -541,18 +541,18 @@ export default function IntakePortal({ params }: { params: Promise<{ token: stri
                   {new Date(sessionInfo.nextMeeting.date).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
                 </p>
               )}
-              <p className="text-sm text-zinc-500 mt-2">{sessionInfo.nextMeeting.type}</p>
+              <p className="text-base text-zinc-500 mt-2">{sessionInfo.nextMeeting.type}</p>
             </div>
           ) : (
             <div className="text-center">
-              <p className="text-sm font-medium text-zinc-500 mb-2">Next Step</p>
+              <p className="text-base font-medium text-zinc-500 mb-2">Next Step</p>
               <p className="text-zinc-700">Your advisor will reach out to confirm your meeting date and time.</p>
             </div>
           )}
         </div>
 
         <div className="bg-white rounded-xl border border-zinc-200 p-6">
-          <p className="text-sm font-semibold text-zinc-900 mb-3">What Happens Next</p>
+          <p className="text-base font-semibold text-zinc-900 mb-3">What Happens Next</p>
           <div className="space-y-3">
             {["Your advisor reviews your questionnaire and documents",
               "Our team analyzes your financial data",
@@ -563,8 +563,49 @@ export default function IntakePortal({ params }: { params: Promise<{ token: stri
                 <div className="w-6 h-6 rounded-full bg-[#16253C] flex items-center justify-center flex-shrink-0">
                   <span className="text-xs font-bold text-[#C7A356]">{i + 1}</span>
                 </div>
-                <p className="text-sm text-zinc-600">{text}</p>
+                <p className="text-base text-zinc-600">{text}</p>
               </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Blog — while you wait, learn from Capital Wealth insights */}
+        <div className="mt-6">
+          <div className="flex items-baseline justify-between mb-4">
+            <p className="text-base font-semibold text-zinc-900">While You Wait — From Our Blog</p>
+            <a href="https://www.capitalwealth.com/blog/" target="_blank" rel="noopener noreferrer"
+               className="text-xs font-medium text-[#16253C] hover:text-[#C7A356] transition-colors">
+              See all &rarr;
+            </a>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[
+              {
+                href: "https://www.capitalwealth.com/blog/2026-retirement-forecast-jan-24-2026/",
+                tag: "Outlook",
+                title: "2026 Retirement Forecast",
+                desc: "What retirees should expect from markets, rates, and policy this year.",
+              },
+              {
+                href: "https://www.capitalwealth.com/blog/dependable-retirement-income-apr-12-2025/",
+                tag: "Income",
+                title: "Dependable Retirement Income",
+                desc: "Turning your savings into a paycheck you can count on.",
+              },
+              {
+                href: "https://www.capitalwealth.com/blog/estate-planning-primary-march2-2026/",
+                tag: "Estate",
+                title: "Estate Planning Essentials",
+                desc: "What every Utah family needs in place before retirement.",
+              },
+            ].map((post) => (
+              <a key={post.href} href={post.href} target="_blank" rel="noopener noreferrer"
+                 className="group bg-white rounded-xl border border-zinc-200 p-5 hover:border-[#C7A356] hover:shadow-md transition-all">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-[#C7A356] mb-2">{post.tag}</p>
+                <p className="text-base font-semibold text-[#16253C] mb-1 group-hover:underline">{post.title}</p>
+                <p className="text-xs text-zinc-600 leading-relaxed">{post.desc}</p>
+                <p className="text-xs font-medium text-[#16253C] mt-3 group-hover:text-[#C7A356]">Read &rarr;</p>
+              </a>
             ))}
           </div>
         </div>

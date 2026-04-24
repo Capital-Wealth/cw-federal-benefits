@@ -214,7 +214,10 @@ function Shell({ children }: { children: React.ReactNode }) {
         padding: "2rem 1rem",
         fontFamily: "system-ui, -apple-system, sans-serif",
         lineHeight: 1.5,
-        color: "#222",
+        color: "#111",
+        background: "#fff",
+        colorScheme: "light",
+        fontSize: "1.0625rem",
       }}
     >
       {children}
@@ -236,10 +239,13 @@ function FieldRow({
   const labelStyle: React.CSSProperties = { display: "block", fontWeight: 600, marginBottom: "0.25rem" };
   const inputStyle: React.CSSProperties = {
     width: "100%",
-    padding: "0.5rem",
-    border: "1px solid #ccc",
+    padding: "0.625rem 0.75rem",
+    border: "1px solid #bbb",
     borderRadius: "4px",
-    fontSize: "1rem",
+    fontSize: "1.0625rem",
+    color: "#111",
+    background: "#fff",
+    colorScheme: "light",
   };
   const rowStyle: React.CSSProperties = { marginBottom: "1.25rem" };
 
