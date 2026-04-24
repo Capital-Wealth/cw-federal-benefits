@@ -554,9 +554,8 @@ export default function IntakePortal({ params }: { params: Promise<{ token: stri
         <div className="bg-white rounded-xl border border-zinc-200 p-6">
           <p className="text-base font-semibold text-zinc-900 mb-3">What Happens Next</p>
           <div className="space-y-3">
-            {["Your advisor reviews your questionnaire and documents",
-              "Our team analyzes your financial data",
-              "Your personalized retirement plan is prepared",
+            {["Our team analyzes your financial data",
+              "Your Personalized Retirement Money Map is Prepared",
               "Your advisor walks you through the findings at your appointment"
             ].map((text, i) => (
               <div key={i} className="flex items-start gap-3">

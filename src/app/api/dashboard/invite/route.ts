@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
 
     const emailBody = `Dear ${clientName},
 
-Your advisor at Capital Wealth Advisors has invited you to securely upload your federal benefits documents for your Retirement Money Map analysis.
+Your advisor at Capital Wealth Advisors has invited you to securely upload your federal benefits documents for your Retirement Money Map™.
 
 Click the link below to access your secure upload portal:
 
