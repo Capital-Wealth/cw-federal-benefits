@@ -41,14 +41,31 @@ export async function GET(request: NextRequest) {
       return Response.json({ error: "Record not found" }, { status: 404 });
     }
 
-    // Get Contact/Lead name if linked
+    // Get name + DOB + state from the linked Contact/Lead. DOB lives on Contact
+    // (not on FBI — that field doesn't exist on the FBI object), and state of
+    // residence comes from the Contact's mailing address.
     let clientName: string | null = null;
+    let dateOfBirth: string | null = null;
+    let stateOfResidence: string | null = null;
     if (record.Contact__c) {
-      const result = await conn.query(`SELECT Name FROM Contact WHERE Id = '${record.Contact__c}' LIMIT 1`);
-      if (result.records.length > 0) clientName = (result.records[0] as Record<string, unknown>).Name as string;
+      const result = await conn.query(
+        `SELECT Name, Birthdate, MailingState FROM Contact WHERE Id = '${record.Contact__c}' LIMIT 1`,
+      );
+      if (result.records.length > 0) {
+        const c = result.records[0] as Record<string, unknown>;
+        clientName = (c.Name as string) ?? null;
+        dateOfBirth = (c.Birthdate as string) ?? null;
+        stateOfResidence = (c.MailingState as string) ?? null;
+      }
     } else if (record.Lead__c) {
-      const result = await conn.query(`SELECT Name FROM Lead WHERE Id = '${record.Lead__c}' LIMIT 1`);
-      if (result.records.length > 0) clientName = (result.records[0] as Record<string, unknown>).Name as string;
+      const result = await conn.query(
+        `SELECT Name, State FROM Lead WHERE Id = '${record.Lead__c}' LIMIT 1`,
+      );
+      if (result.records.length > 0) {
+        const l = result.records[0] as Record<string, unknown>;
+        clientName = (l.Name as string) ?? null;
+        stateOfResidence = (l.State as string) ?? null;
+      }
     }
 
     // Map to Vision's expected format
@@ -60,7 +77,8 @@ export async function GET(request: NextRequest) {
       clientName,
 
       // Required fields
-      dateOfBirth: record.Date_of_Birth__c,
+      // dateOfBirth is read from Contact.Birthdate above (not on FBI object).
+      dateOfBirth,
       serviceComputationDate: record.Service_Computation_Date__c,
       retirementSystem: record.Retirement_System__c,
       employeeType: record.Employee_Type__c,
@@ -158,16 +176,11 @@ export async function GET(request: NextRequest) {
       fegliPostRetirement: record.FEGLI_Basic_Reduce_65__c,
       fegliBiweeklyPremium: record.FEGLI_Biweekly_Premium__c,
 
-      // FEHB
-      fehbPlanName: record.FEHB_Plan_Name__c,
-      fehbEnrollment: (() => {
-        const map: Record<string, string> = {
-          "Self Only": "SELF_ONLY",
-          "Self Plus One": "SELF_PLUS_ONE",
-          "Self and Family": "SELF_AND_FAMILY",
-        };
-        return map[record.FEHB_Enrollment_Type__c] || record.FEHB_Enrollment_Type__c;
-      })(),
+      // FEHB — plan name + enrollment type are not yet on the FBI object;
+      // downstream calc engine doesn't need them and the mapper supplies a
+      // sensible default. Premium + annual increase are populated by the parser.
+      fehbPlanName: null,
+      fehbEnrollment: null,
       fehbBiweeklyPremium: record.FEHB_Biweekly_Premium__c,
       fehbIncreaseRate: record.FEHB_Annual_Increase__c
         ? record.FEHB_Annual_Increase__c / 100
@@ -177,9 +190,9 @@ export async function GET(request: NextRequest) {
       ssBenefitAge62: record.SS_FERS_Monthly_Benefit__c || record.SS_CSRS_Monthly_Benefit__c,
       ssStartAge: record.SS_FERS_Start_Age__c || record.SS_CSRS_Start_Age__c,
 
-      // Military
+      // Military — branch is not on the FBI object yet; harmless to omit.
       hasMilitaryService: record.Has_DD214__c,
-      militaryBranch: record.Military_Branch__c,
+      militaryBranch: null,
       militaryStartDate: record.Military_Service_From__c,
       militaryEndDate: record.Military_Service_To__c,
       militaryDepositPaid: record.Military_Deposit_Paid__c,
@@ -195,21 +208,17 @@ export async function GET(request: NextRequest) {
       })(),
       survivorBenefitCsrs: record.Survivor_Benefit_CSRS__c,
       spouseDOB: record.Spouse_DOB__c,
-      maritalStatus: record.Marital_Status__c
-        ? record.Marital_Status__c.toUpperCase()
-        : null,
+      // Marital status / filing status / tax rates aren't tracked on the FBI
+      // object today — surface as null so downstream defaults apply (SINGLE,
+      // 22% federal, 5% state) and the dataWarnings list can flag them.
+      maritalStatus: null,
 
       // Tax
-      filingStatus: record.Filing_Status__c
-        ? record.Filing_Status__c.toUpperCase().replace(/ /g, "_")
-        : null,
-      federalTaxRate: record.Federal_Tax_Rate__c
-        ? record.Federal_Tax_Rate__c / 100
-        : null,
-      stateOfResidence: record.State_of_Residence__c,
-      stateTaxRate: record.State_Tax_Rate__c
-        ? record.State_Tax_Rate__c / 100
-        : null,
+      filingStatus: null,
+      federalTaxRate: null,
+      // stateOfResidence is read from Contact.MailingState above (not on FBI).
+      stateOfResidence,
+      stateTaxRate: null,
 
       // Deposit/Redeposit
       hasNonDeductionService: record.Has_Periods_No_Contributions__c,
@@ -217,11 +226,11 @@ export async function GET(request: NextRequest) {
       hasRefundedService: record.Left_Service_Took_Funds__c,
       reDepositOwed: record.Redeposit_Amount_Owed__c,
 
-      // Other Income
-      otherPensions: record.Other_Pensions__c,
+      // Other Income — not yet tracked on the FBI; advisor enters in Live Plan.
+      otherPensions: null,
       spouseIncome: record.Spouse_Income__c,
       rentalIncome: record.Rental_Property_Income__c,
-      investmentIncome: record.Investment_Income__c,
+      investmentIncome: null,
       monthlyHousing: record.Expense_Mortgage_Rent__c,
 
       // xFERS / FERS Transfer
