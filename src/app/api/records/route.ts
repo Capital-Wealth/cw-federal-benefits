@@ -86,7 +86,10 @@ export async function GET(request: NextRequest) {
       currentAnnualSalary: record.Current_Annual_Salary__c,
       plannedRetirementDate: record.Desired_Retirement_Date__c,
       sickLeaveHours: record.Sick_Leave_Hours_To_Date__c,
-      annualSalaryIncreaseRate: record.Expected_Salary_Increase__c,
+      // Field stores whole percent (e.g. 2 for 2%); calc engine expects decimal.
+      annualSalaryIncreaseRate: record.Expected_Salary_Increase__c != null
+        ? record.Expected_Salary_Increase__c / 100
+        : null,
       isPostalEmployee: record.Is_Postal_Employee__c,
 
       // TSP Traditional
