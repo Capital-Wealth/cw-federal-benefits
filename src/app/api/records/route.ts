@@ -47,24 +47,37 @@ export async function GET(request: NextRequest) {
     let clientName: string | null = null;
     let dateOfBirth: string | null = null;
     let stateOfResidence: string | null = null;
+    let address: string | null = null;
     if (record.Contact__c) {
       const result = await conn.query(
-        `SELECT Name, Birthdate, MailingState FROM Contact WHERE Id = '${record.Contact__c}' LIMIT 1`,
+        `SELECT Name, Birthdate, MailingStreet, MailingCity, MailingState, MailingPostalCode FROM Contact WHERE Id = '${record.Contact__c}' LIMIT 1`,
       );
       if (result.records.length > 0) {
         const c = result.records[0] as Record<string, unknown>;
         clientName = (c.Name as string) ?? null;
         dateOfBirth = (c.Birthdate as string) ?? null;
         stateOfResidence = (c.MailingState as string) ?? null;
+        const street = (c.MailingStreet as string) ?? '';
+        const city = (c.MailingCity as string) ?? '';
+        const state = (c.MailingState as string) ?? '';
+        const zip = (c.MailingPostalCode as string) ?? '';
+        const cityStateZip = [city, state].filter(Boolean).join(', ') + (zip ? ` ${zip}` : '');
+        address = [street, cityStateZip].filter(s => s.trim()).join(', ') || null;
       }
     } else if (record.Lead__c) {
       const result = await conn.query(
-        `SELECT Name, State FROM Lead WHERE Id = '${record.Lead__c}' LIMIT 1`,
+        `SELECT Name, Street, City, State, PostalCode FROM Lead WHERE Id = '${record.Lead__c}' LIMIT 1`,
       );
       if (result.records.length > 0) {
         const l = result.records[0] as Record<string, unknown>;
         clientName = (l.Name as string) ?? null;
         stateOfResidence = (l.State as string) ?? null;
+        const street = (l.Street as string) ?? '';
+        const city = (l.City as string) ?? '';
+        const state = (l.State as string) ?? '';
+        const zip = (l.PostalCode as string) ?? '';
+        const cityStateZip = [city, state].filter(Boolean).join(', ') + (zip ? ` ${zip}` : '');
+        address = [street, cityStateZip].filter(s => s.trim()).join(', ') || null;
       }
     }
 
@@ -75,6 +88,7 @@ export async function GET(request: NextRequest) {
       sfRecordName: record.Name,
       status: record.Status__c,
       clientName,
+      address,
 
       // Required fields
       // dateOfBirth is read from Contact.Birthdate above (not on FBI object).
