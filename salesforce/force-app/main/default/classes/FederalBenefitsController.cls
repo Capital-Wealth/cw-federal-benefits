@@ -30,15 +30,23 @@ public with sharing class FederalBenefitsController {
         return 'https://benefits.capitalwealth.com';
     }
 
-    // v0.5 — secret pinned in code. v1.0 will move this to a Protected
-    // Custom Setting + Vercel env var. Both sides must match.
-    private static final String LIVE_PLAN_SECRET_V05 =
+    // Fallback constant — used only if the Live_Plan_Config__c custom setting
+    // has no Active row (e.g. fresh org). Rotation happens via DML on the
+    // setting; no metadata deploy needed.
+    private static final String LIVE_PLAN_SECRET_FALLBACK =
         'bcec9e65a5d08639277e62bbcc0df4fdfc87b58dcec200f98b67efeb19f48be8';
 
     @TestVisible private static String testLivePlanSecret;
     private static String getLivePlanSecret() {
         if (testLivePlanSecret != null) return testLivePlanSecret;
-        return LIVE_PLAN_SECRET_V05;
+        List<Live_Plan_Config__c> active = [
+            SELECT Secret__c FROM Live_Plan_Config__c
+            WHERE Active__c = true ORDER BY LastModifiedDate DESC LIMIT 1
+        ];
+        if (!active.isEmpty() && String.isNotBlank(active[0].Secret__c)) {
+            return active[0].Secret__c;
+        }
+        return LIVE_PLAN_SECRET_FALLBACK;
     }
 
     /**

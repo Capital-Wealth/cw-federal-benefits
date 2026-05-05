@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
+    <customSettingsType>List</customSettingsType>
+    <description>Configuration for the Federal Benefits Gap Analysis Live Plan web app. List Custom Setting (supports DML) so the HMAC secret can be rotated without a metadata deploy.</description>
+    <enableFeeds>false</enableFeeds>
+    <label>Live Plan Config</label>
+    <visibility>Public</visibility>
+</CustomObject>
