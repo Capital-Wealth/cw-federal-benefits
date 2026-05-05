@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Intake__c</fullName>
+    <description>The Federal_Benefits_Intake__c record this change applies to. Master-detail so changes are deleted when the parent is.</description>
+    <externalId>false</externalId>
+    <label>Intake</label>
+    <referenceTo>Federal_Benefits_Intake__c</referenceTo>
+    <relationshipLabel>Plan Changes</relationshipLabel>
+    <relationshipName>Plan_Changes</relationshipName>
+    <relationshipOrder>0</relationshipOrder>
+    <reparentableMasterDetail>false</reparentableMasterDetail>
+    <trackTrending>false</trackTrending>
+    <type>MasterDetail</type>
+    <writeRequiresMasterRead>false</writeRequiresMasterRead>
+</CustomField>

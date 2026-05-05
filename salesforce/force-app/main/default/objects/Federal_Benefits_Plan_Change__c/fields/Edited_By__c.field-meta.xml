@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Edited_By__c</fullName>
+    <description>The advisor (User) who made the change. Set explicitly so the record's CreatedById (which may be a service account) is not the source of truth.</description>
+    <externalId>false</externalId>
+    <label>Edited By</label>
+    <referenceTo>User</referenceTo>
+    <relationshipName>Plan_Changes_Made</relationshipName>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Lookup</type>
+</CustomField>

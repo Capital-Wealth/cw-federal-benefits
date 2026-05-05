@@ -1,0 +1,401 @@
+<template>
+    <lightning-card title="Federal Vault Case Design" icon-name="standard:entitlement">
+
+        <!-- DISCOVERY MEETING CONTEXT — summary only; transcript lives on the Meeting record -->
+        <template lwc:if={hasDiscovery}>
+            <div class="slds-p-horizontal_medium slds-m-bottom_medium">
+                <div class="slds-box slds-m-bottom_small" style="background:#f8fafc;border-left:4px solid #16253C;padding:12px 14px;">
+                    <div class="slds-grid slds-grid_align-spread slds-grid_vertical-align-center slds-m-bottom_x-small">
+                        <div>
+                            <p class="slds-text-title_caps" style="color:#C7A356;font-weight:700;">Discovery Meeting</p>
+                            <p class="slds-text-body_regular"><strong>{discoveryMeetingName}</strong></p>
+                            <p class="slds-text-body_small slds-text-color_weak">{discoveryMeetingDate} &middot; {discoveryOwner}</p>
+                        </div>
+                        <lightning-button label="Open Meeting" variant="base"
+                            icon-name="utility:new_window" onclick={handleOpenDiscoveryMeeting}>
+                        </lightning-button>
+                    </div>
+                    <template lwc:if={hasDiscoverySummary}>
+                        <div class="slds-m-top_x-small">
+                            <p class="slds-text-title_caps slds-m-bottom_xx-small slds-text-color_weak">AI Summary</p>
+                            <p class="slds-text-body_regular" style="white-space:pre-wrap;color:#16253C;">{discoverySummary}</p>
+                        </div>
+                    </template>
+                    <template lwc:if={hasDiscoveryTranscript}>
+                        <div class="slds-m-top_small slds-text-body_small slds-text-color_weak">
+                            <lightning-icon icon-name="utility:knowledge_base" size="xx-small" class="slds-m-right_xx-small"></lightning-icon>
+                            Full transcript {transcriptCharCountLabel} is attached to the meeting record.
+                            <a href="javascript:void(0);" onclick={handleOpenDiscoveryMeeting}>View on meeting &rarr;</a>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </template>
+
+        <!-- ACCOUNT PAGE: Show intake status when one exists -->
+        <template lwc:if={showIntakeStatus}>
+            <div class="slds-p-horizontal_medium slds-m-bottom_medium">
+
+                <!-- Status bar -->
+                <div class="slds-grid slds-grid_align-spread slds-m-bottom_small">
+                    <div class="slds-col">
+                        <span class="slds-text-body_small slds-text-color_weak">{intakeName}</span>
+                        <lightning-badge label={intakeStatusLabel} class="slds-m-left_small"></lightning-badge>
+                        <template lwc:if={confidence}>
+                            <span class="slds-m-left_small slds-text-body_small slds-text-color_weak">
+                                {confidence}% AI confidence
+                            </span>
+                        </template>
+                    </div>
+                    <div class="slds-col slds-text-align_right">
+                        <lightning-button label="Open Intake" variant="base"
+                            icon-name="utility:new_window" onclick={handleOpenIntake}>
+                        </lightning-button>
+                    </div>
+                </div>
+
+                <!-- Documents uploaded count -->
+                <div class="slds-box slds-p-around_small slds-m-bottom_small" style="background:#f0faf4;">
+                    <div class="slds-grid slds-grid_align-spread">
+                        <span class="slds-text-body_regular">
+                            <strong>{documentCount}</strong> document(s) uploaded
+                        </span>
+                        <template lwc:if={reportGenerated}>
+                            <span class="slds-text-color_success slds-text-body_small">
+                                <lightning-icon icon-name="utility:check" size="xx-small" class="slds-m-right_xx-small"></lightning-icon>
+                                Report Generated
+                            </span>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- All extracted data -->
+                <template lwc:if={hasExtractedData}>
+                    <!-- Employment -->
+                    <p class="slds-text-title_caps slds-m-bottom_xx-small slds-m-top_small">Employment</p>
+                    <div class="slds-grid slds-wrap slds-gutters_x-small slds-m-bottom_small">
+                        <div class="slds-col slds-size_1-of-3 slds-m-bottom_xx-small">
+                            <span class="slds-text-body_small slds-text-color_weak">System</span>
+                            <p><strong>{intakeRetirement}</strong></p>
+                        </div>
+                        <div class="slds-col slds-size_1-of-3 slds-m-bottom_xx-small">
+                            <span class="slds-text-body_small slds-text-color_weak">Salary</span>
+                            <p><strong>{intakeSalary}</strong></p>
+                        </div>
+                        <div class="slds-col slds-size_1-of-3 slds-m-bottom_xx-small">
+                            <span class="slds-text-body_small slds-text-color_weak">SCD</span>
+                            <p><strong>{intakeSCD}</strong></p>
+                        </div>
+                        <div class="slds-col slds-size_1-of-3 slds-m-bottom_xx-small">
+                            <span class="slds-text-body_small slds-text-color_weak">Sick Leave</span>
+                            <p><strong>{intakeSickLeave}</strong></p>
+                        </div>
+                        <div class="slds-col slds-size_1-of-3 slds-m-bottom_xx-small">
+                            <span class="slds-text-body_small slds-text-color_weak">Type</span>
+                            <p><strong>{intakeEmployeeType}</strong></p>
+                        </div>
+                        <div class="slds-col slds-size_1-of-3 slds-m-bottom_xx-small">
+                            <span class="slds-text-body_small slds-text-color_weak">Survivor</span>
+                            <p><strong>{survivorBenefit}</strong></p>
+                        </div>
+                    </div>
+
+                    <!-- TSP -->
+                    <template lwc:if={hasTSP}>
+                        <p class="slds-text-title_caps slds-m-bottom_xx-small">TSP</p>
+                        <div class="slds-grid slds-wrap slds-gutters_x-small slds-m-bottom_small">
+                            <div class="slds-col slds-size_1-of-3 slds-m-bottom_xx-small">
+                                <span class="slds-text-body_small slds-text-color_weak">Traditional</span>
+                                <p><strong>{tspTraditional}</strong></p>
+                            </div>
+                            <div class="slds-col slds-size_1-of-3 slds-m-bottom_xx-small">
+                                <span class="slds-text-body_small slds-text-color_weak">Roth</span>
+                                <p><strong>{tspRoth}</strong></p>
+                            </div>
+                            <div class="slds-col slds-size_1-of-3 slds-m-bottom_xx-small">
+                                <span class="slds-text-body_small slds-text-color_weak">Total TSP</span>
+                                <p><strong>{tspTotal}</strong></p>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- Insurance + SS -->
+                    <p class="slds-text-title_caps slds-m-bottom_xx-small">Insurance &amp; Benefits</p>
+                    <div class="slds-grid slds-wrap slds-gutters_x-small slds-m-bottom_small">
+                        <div class="slds-col slds-size_1-of-3 slds-m-bottom_xx-small">
+                            <span class="slds-text-body_small slds-text-color_weak">FEGLI</span>
+                            <p><strong>{fegliSummary}</strong></p>
+                        </div>
+                        <div class="slds-col slds-size_1-of-3 slds-m-bottom_xx-small">
+                            <span class="slds-text-body_small slds-text-color_weak">FEHB Premium</span>
+                            <p><strong>{fehbPremium}</strong></p>
+                        </div>
+                        <div class="slds-col slds-size_1-of-3 slds-m-bottom_xx-small">
+                            <span class="slds-text-body_small slds-text-color_weak">SS at {ssStartAge}</span>
+                            <p><strong>{ssMonthly}</strong></p>
+                        </div>
+                    </div>
+
+                    <!-- Military -->
+                    <template lwc:if={hasMilitary}>
+                        <p class="slds-text-title_caps slds-m-bottom_xx-small">Military Service</p>
+                        <div class="slds-m-bottom_small">
+                            <span class="slds-text-body_small">{militaryDates}</span>
+                        </div>
+                    </template>
+
+                    <!-- LES Deductions -->
+                    <p class="slds-text-title_caps slds-m-bottom_xx-small">Biweekly Deductions</p>
+                    <div class="slds-grid slds-wrap slds-gutters_x-small slds-m-bottom_small">
+                        <div class="slds-col slds-size_1-of-3 slds-m-bottom_xx-small">
+                            <span class="slds-text-body_small slds-text-color_weak">Federal Tax</span>
+                            <p><strong>{lesFedTax}</strong></p>
+                        </div>
+                        <div class="slds-col slds-size_1-of-3 slds-m-bottom_xx-small">
+                            <span class="slds-text-body_small slds-text-color_weak">State Tax</span>
+                            <p><strong>{lesStateTax}</strong></p>
+                        </div>
+                        <div class="slds-col slds-size_1-of-3 slds-m-bottom_xx-small">
+                            <span class="slds-text-body_small slds-text-color_weak">Retirement</span>
+                            <p><strong>{lesRetirement}</strong></p>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- Uploaded documents list -->
+                <template lwc:if={hasAccountDocs}>
+                    <p class="slds-text-title_caps slds-m-bottom_xx-small slds-m-top_small">Uploaded Documents ({documentCount})</p>
+                    <div class="slds-m-bottom_small">
+                        <template for:each={accountDocs} for:item="doc">
+                            <div key={doc.docId} class="slds-grid slds-grid_vertical-align-center slds-p-vertical_xx-small" style="border-bottom:1px solid #eee;">
+                                <div class="slds-col slds-grow">
+                                    <a href={doc.viewUrl} target="_blank" class="slds-text-body_small">
+                                        {doc.title}
+                                    </a>
+                                </div>
+                                <div class="slds-col slds-shrink">
+                                    <span class="slds-text-body_small slds-text-color_weak">{doc.fileType} &middot; {doc.size}</span>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+
+                <!-- Action buttons on Account page -->
+                <div class="slds-grid slds-grid_align-spread slds-m-top_small">
+                    <div class="slds-col">
+                        <template lwc:if={showAccountMarkComplete}>
+                            <lightning-button label="Verified" variant="brand"
+                                icon-name="utility:check" onclick={handleMarkComplete} disabled={isLoading}>
+                            </lightning-button>
+                        </template>
+                        <template lwc:if={showOpenLivePlan}>
+                            <lightning-button label="Open Live Plan" variant="brand"
+                                icon-name="utility:trending" onclick={handleOpenLivePlan} disabled={isLoading}
+                                class="slds-m-right_x-small">
+                            </lightning-button>
+                        </template>
+                        <template lwc:if={showAccountGenerateReport}>
+                            <lightning-button label="Generate Federal Benefits Gap Analysis" variant="neutral"
+                                icon-name="utility:file" onclick={handleGenerateReport} disabled={isLoading}>
+                            </lightning-button>
+                        </template>
+                    </div>
+                    <div class="slds-col slds-text-align_right">
+                        <template lwc:if={showStartDirectUpload}>
+                            <lightning-button label="Upload More Documents" variant="neutral"
+                                icon-name="utility:upload" onclick={handleStartDirectUpload} disabled={isLoading}>
+                            </lightning-button>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <!-- DIRECT UPLOAD WIDGET (revealed after Upload Documents Now / Upload More Documents) -->
+        <template lwc:if={showDirectUploader}>
+            <div class="slds-box slds-m-horizontal_medium slds-m-bottom_medium" style="background:#f8fafc;border-left:4px solid #0d7a3e;">
+                <p class="slds-text-title_caps slds-m-bottom_x-small" style="color:#0d7a3e;">Upload Vault Documents</p>
+                <p class="slds-text-body_small slds-m-bottom_small slds-text-color_weak">
+                    Drop SF-50, LES, TSP statements, DD-214, or Social Security statements.
+                    Salesforce caps each upload at <strong>10 files</strong> — if you have more,
+                    drop them in batches and click <em>Done</em> when finished.
+                </p>
+                <lightning-file-upload
+                    label="Drop files here or click to browse"
+                    name="vaultDocs"
+                    accept={acceptedFileFormats}
+                    record-id={directUploadIntakeId}
+                    multiple
+                    onuploadfinished={handleUploadFinished}>
+                </lightning-file-upload>
+                <div class="slds-m-top_small slds-grid slds-grid_align-end">
+                    <lightning-button
+                        label="Done — Parse &amp; Generate Report"
+                        variant="brand"
+                        icon-name="utility:check"
+                        onclick={handleFinishUploading}
+                        disabled={isLoading}>
+                    </lightning-button>
+                </div>
+            </div>
+        </template>
+
+        <!-- HOUSEHOLD / CONTACT / LEAD: Invite to Upload (no intake exists yet) -->
+        <template lwc:if={showInvite}>
+            <div class="slds-p-horizontal_medium slds-m-bottom_medium">
+                <template lwc:if={showStartDirectUpload}>
+                    <p class="slds-text-body_regular slds-m-bottom_small">
+                        Send the Primary Contact a secure link to their Capital Wealth Vault — or upload documents directly if you already have them.
+                    </p>
+                    <div class="slds-grid slds-gutters_x-small">
+                        <lightning-button label="Send Capital Wealth Vault Invite" variant="brand"
+                            icon-name="utility:email" onclick={handleInvite} disabled={isLoading}
+                            class="slds-m-right_x-small">
+                        </lightning-button>
+                        <lightning-button label="Upload Documents Now" variant="neutral"
+                            icon-name="utility:upload" onclick={handleStartDirectUpload} disabled={isLoading}>
+                        </lightning-button>
+                    </div>
+                </template>
+            </div>
+        </template>
+
+        <!-- Household but no Primary Contact set — block the invite with a clear warning -->
+        <template lwc:if={missingPrimaryContactWarning}>
+            <div class="slds-box slds-m-horizontal_medium slds-m-bottom_medium slds-theme_warning">
+                <p class="slds-text-body_small">
+                    <strong>Primary Contact not set on this Household.</strong>
+                    Set a Primary Contact before sending a Capital Wealth Vault invite — the email goes to the Primary.
+                </p>
+            </div>
+        </template>
+
+        <!-- Send another invite (intake already exists) -->
+        <template lwc:if={showInviteAgain}>
+            <div class="slds-p-horizontal_medium slds-m-bottom_small">
+                <lightning-button label="Send New Vault Invite" variant="neutral"
+                    icon-name="utility:email" onclick={handleInvite} disabled={isLoading}>
+                </lightning-button>
+            </div>
+        </template>
+
+        <!-- Portal URL (after invite) -->
+        <template lwc:if={portalUrl}>
+            <div class="slds-box slds-m-horizontal_medium slds-m-bottom_medium slds-theme_shade">
+                <p class="slds-text-title_caps slds-m-bottom_xx-small">Secure Upload Portal</p>
+                <div class="slds-grid slds-grid_vertical-align-center">
+                    <div class="slds-col slds-size_10-of-12">
+                        <lightning-formatted-url value={portalUrl} label={portalUrl} target="_blank"></lightning-formatted-url>
+                    </div>
+                    <div class="slds-col slds-size_2-of-12 slds-text-align_right">
+                        <lightning-button-icon icon-name="utility:copy_to_clipboard"
+                            alternative-text="Copy" onclick={handleCopyUrl}></lightning-button-icon>
+                    </div>
+                </div>
+                <p class="slds-text-body_small slds-text-color_weak slds-m-top_xx-small">
+                    Email sent to client. You can also copy and send this link manually.
+                </p>
+            </div>
+        </template>
+
+        <!-- FBI RECORD PAGE: Status badge -->
+        <template lwc:if={isFBIRecord}>
+            <div class="slds-m-bottom_medium slds-p-horizontal_medium">
+                <lightning-badge label={status}></lightning-badge>
+                <template lwc:if={confidence}>
+                    <span class="slds-m-left_small slds-text-body_small slds-text-color_weak">
+                        AI Confidence: {confidence}%
+                    </span>
+                </template>
+            </div>
+        </template>
+
+        <!-- FBI: Check uploads + direct upload affordance -->
+        <template lwc:if={isFBIRecord}>
+            <div class="slds-p-horizontal_medium slds-m-bottom_medium slds-grid slds-gutters_x-small">
+                <template lwc:if={showCheckUploads}>
+                    <lightning-button label="Check Uploaded Documents" variant="neutral"
+                        icon-name="utility:refresh" onclick={handleCheckUploads} disabled={isLoading}
+                        class="slds-m-right_x-small">
+                    </lightning-button>
+                </template>
+                <template lwc:if={showStartDirectUpload}>
+                    <lightning-button label="Upload Documents" variant="neutral"
+                        icon-name="utility:upload" onclick={handleStartDirectUpload} disabled={isLoading}>
+                    </lightning-button>
+                </template>
+            </div>
+        </template>
+
+        <!-- Document list (FBI page) -->
+        <template lwc:if={documents.length}>
+            <div class="slds-p-horizontal_medium slds-m-bottom_medium">
+                <p class="slds-text-title_caps slds-m-bottom_x-small">Uploaded Documents</p>
+                <ul class="slds-list_dotted">
+                    <template for:each={documents} for:item="doc">
+                        <li key={doc.title}>
+                            <span class="slds-text-body_regular">{doc.title}</span>
+                            <template lwc:if={doc.documentType}>
+                                <span class="slds-text-body_small slds-text-color_weak slds-m-left_small">({doc.documentType})</span>
+                            </template>
+                        </li>
+                    </template>
+                </ul>
+            </div>
+        </template>
+
+        <!-- FBI: Fields needing review -->
+        <template lwc:if={showReviewFields}>
+            <div class="slds-box slds-m-horizontal_medium slds-m-bottom_medium slds-theme_warning">
+                <p class="slds-text-title_caps slds-m-bottom_xx-small">Fields Needing Review</p>
+                <p class="slds-text-body_small" style="white-space: pre-wrap;">{fieldsNeedingReview}</p>
+            </div>
+        </template>
+
+        <!-- FBI: Mark Complete -->
+        <template lwc:if={showMarkComplete}>
+            <div class="slds-p-horizontal_medium slds-m-bottom_medium">
+                <lightning-button label="Verified" variant="brand"
+                    icon-name="utility:check" onclick={handleMarkComplete} disabled={isLoading}>
+                </lightning-button>
+            </div>
+        </template>
+
+        <!-- FBI: Generate Report -->
+        <template lwc:if={showGenerateReport}>
+            <div class="slds-p-horizontal_medium slds-m-bottom_medium">
+                <lightning-button label="Generate Federal Benefits Gap Analysis" variant="brand"
+                    icon-name="utility:file" onclick={handleGenerateReport} disabled={isLoading}>
+                </lightning-button>
+            </div>
+        </template>
+
+        <!-- Report generated badge with link -->
+        <template lwc:if={reportGenerated}>
+            <div class="slds-box slds-m-horizontal_medium slds-m-bottom_medium" style="background:#f0faf4;border:1px solid #2e844a;">
+                <div class="slds-grid slds-grid_vertical-align-center">
+                    <lightning-icon icon-name="utility:check" size="small" class="slds-m-right_small" style="color:#2e844a;"></lightning-icon>
+                    <span class="slds-text-body_regular" style="color:#2e844a;font-weight:bold;">Federal Benefits Gap Analysis Generated</span>
+                </div>
+                <p class="slds-text-body_small slds-m-top_xx-small slds-text-color_weak">
+                    The PDF report is attached to this record under Files. Refresh the page to see it in the documents list above.
+                </p>
+            </div>
+        </template>
+
+        <!-- Loading -->
+        <template lwc:if={isLoading}>
+            <div class="slds-p-around_medium slds-text-align_center">
+                <lightning-spinner alternative-text="Loading" size="small"></lightning-spinner>
+            </div>
+        </template>
+
+        <!-- Error -->
+        <template lwc:if={error}>
+            <div class="slds-box slds-m-horizontal_medium slds-m-bottom_medium slds-theme_error">
+                <p class="slds-text-body_small">{error}</p>
+            </div>
+        </template>
+    </lightning-card>
+</template>

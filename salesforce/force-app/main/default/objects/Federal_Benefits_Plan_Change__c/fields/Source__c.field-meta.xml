@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Source__c</fullName>
+    <description>Where the change originated.</description>
+    <externalId>false</externalId>
+    <label>Source</label>
+    <required>true</required>
+    <trackTrending>false</trackTrending>
+    <type>Picklist</type>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>Live Plan</fullName>
+                <default>true</default>
+                <label>Live Plan</label>
+            </value>
+            <value>
+                <fullName>SF Direct Edit</fullName>
+                <default>false</default>
+                <label>SF Direct Edit</label>
+            </value>
+            <value>
+                <fullName>AI Parse</fullName>
+                <default>false</default>
+                <label>AI Parse</label>
+            </value>
+            <value>
+                <fullName>Client Portal</fullName>
+                <default>false</default>
+                <label>Client Portal</label>
+            </value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>

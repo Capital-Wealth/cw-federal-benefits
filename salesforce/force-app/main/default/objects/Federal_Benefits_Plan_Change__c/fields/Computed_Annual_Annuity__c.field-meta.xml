@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Computed_Annual_Annuity__c</fullName>
+    <description>Annual annuity recomputed at the moment of this edit. Lets us reconstruct any historical state of the plan from the change log alone.</description>
+    <externalId>false</externalId>
+    <label>Computed Annual Annuity</label>
+    <precision>14</precision>
+    <required>false</required>
+    <scale>2</scale>
+    <trackTrending>false</trackTrending>
+    <type>Currency</type>
+</CustomField>
