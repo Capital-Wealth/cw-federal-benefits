@@ -212,13 +212,18 @@ export default function LivePlanClient({
       <header style={{ background: "#16253C", color: "#fff", padding: "16px 32px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "3px solid #C7A356" }}>
         <div>
           <div style={{ fontFamily: FONT_DISPLAY, fontSize: 22, color: "#C7A356", letterSpacing: 2 }}>CAPITAL WEALTH</div>
-          <div style={{ fontSize: 11, color: "#cad4e2", letterSpacing: 3 }}>FEDERAL BENEFITS GAP ANALYSIS — LIVE PLAN v1.0</div>
+          <div style={{ fontSize: 11, color: "#cad4e2", letterSpacing: 3 }}>FEDERAL BENEFITS GAP ANALYSIS — LIVE PLAN v1.1</div>
         </div>
         <div style={{ textAlign: "right", fontSize: 12, color: "#cad4e2" }}>
           <div><strong style={{ color: "#fff" }}>{clientName ?? "—"}</strong></div>
           <div>Edited by {session.userName}</div>
         </div>
       </header>
+
+      {/* Inline edit hint banner */}
+      <div style={{ background: "#fef9ee", borderBottom: "1px solid #C7A356", padding: "8px 32px", fontSize: 12, color: "#374151", textAlign: "center" }}>
+        <strong style={{ color: "#16253C" }}>✎ Inline edit is on.</strong> Click any value with a dashed gold underline to edit it directly — numbers update everywhere instantly.
+      </div>
 
       {/* Scenario tabs */}
       <div style={{ background: "#fff", padding: "10px 32px", borderBottom: "1px solid #E5E7EB", display: "flex", alignItems: "center", gap: 8 }}>
@@ -246,6 +251,7 @@ export default function LivePlanClient({
           address={address}
           dateOfBirth={dateOfBirth}
           isComparison={!!planB}
+          onUpdate={(k, v) => setPlanA((s) => ({ ...s, [k]: v }))}
         />
 
         {/* PLAN B column (conditional) */}
@@ -259,6 +265,7 @@ export default function LivePlanClient({
             address={address}
             dateOfBirth={dateOfBirth}
             isComparison
+            onUpdate={(k, v) => setPlanB((s: PlanState | null) => ({ ...(s ?? initial), [k]: v }))}
           />
         )}
 
@@ -343,8 +350,9 @@ function PlanColumn(props: {
   address: string | null;
   dateOfBirth: string | null;
   isComparison: boolean;
+  onUpdate: <K extends keyof PlanState>(key: K, value: PlanState[K]) => void;
 }) {
-  const { label, highlighted, state, result, clientName, address, dateOfBirth, isComparison } = props;
+  const { label, highlighted, state, result, clientName, address, dateOfBirth, isComparison, onUpdate } = props;
   if (!result) {
     // Diagnose what's missing so the advisor knows what to enter.
     const missing: string[] = [];
@@ -422,7 +430,9 @@ function PlanColumn(props: {
         <Tile label="AGE @ RET" value={String(ageAtRetirement)} />
       </div>
 
-      {/* Service Breakdown — shows how civilian + sick leave roll into total */}
+      {/* Service Breakdown — shows how civilian + sick leave roll into total.
+          Sick leave hours are inline-editable; civilian service is derived
+          from SCD ↔ Retirement Date which are also inline-editable below. */}
       <SectionLabel>SERVICE BREAKDOWN</SectionLabel>
       {(() => {
         const civYrs = state.Service_Computation_Date__c && state.Desired_Retirement_Date__c
@@ -433,7 +443,6 @@ function PlanColumn(props: {
               return { y: Math.floor(months / 12), m: months % 12 };
             })()
           : { y: 0, m: 0 };
-        // Sick leave credit = floor(hours / 174) per OPM 2087 Hour Chart
         const sickHrs = state.Sick_Leave_Hours_To_Date__c || 0;
         const sickMonthsTotal = Math.floor(sickHrs / 174);
         const sickY = Math.floor(sickMonthsTotal / 12);
@@ -441,14 +450,28 @@ function PlanColumn(props: {
         return (
           <>
             <Row label="Civilian Service (SCD → Retirement)" value={`${civYrs.y}y ${civYrs.m}m`} />
-            <Row label={`Sick Leave Credit (${sickHrs.toLocaleString()} hrs ÷ 174 hr/mo)`} value={`${sickY}y ${sickM}m`} />
+            <EditableRow
+              label={`Sick Leave Hours (÷ 174 hr/mo = ${sickY}y ${sickM}m)`}
+              display={sickHrs.toLocaleString()}
+              value={sickHrs}
+              step={4}
+              onCommit={(v) => onUpdate("Sick_Leave_Hours_To_Date__c", Number(v))}
+            />
             <Row label="Total Creditable Service" value={`${result.annuity.totalServiceYears}y ${result.annuity.totalServiceMonths}m`} />
           </>
         );
       })()}
 
-      {/* Survivor */}
+      {/* Survivor — election is inline-editable */}
       <SectionLabel>SURVIVOR — {state.Survivor_Benefit_FERS__c}</SectionLabel>
+      <EditableRow
+        label="Survivor election"
+        display={state.Survivor_Benefit_FERS__c}
+        value={state.Survivor_Benefit_FERS__c}
+        type="select"
+        options={[{ label: "None", value: "0%" }, { label: "25%", value: "25%" }, { label: "50%", value: "50%" }]}
+        onCommit={(v) => onUpdate("Survivor_Benefit_FERS__c", String(v))}
+      />
       <Row label="Annuity (no survivor)" value={`${fmt$(result.annuity.monthlyAnnuity, false)}/mo`} />
       <Row label="Annuity (with survivor)" value={`${fmt$((result.annuity.annualAnnuity - result.survivorBenefit.annualCost) / 12, false)}/mo`} />
       <Row label="Spouse benefit" value={`${fmt$(result.survivorBenefit.survivorMonthlyBenefit, false)}/mo`} />
@@ -458,18 +481,51 @@ function PlanColumn(props: {
         <>
           <SectionLabel>FERS SUPPLEMENT &amp; SOCIAL SECURITY</SectionLabel>
           <Row label="FERS Supplement (monthly)" value={result.fersSupplement.eligible ? fmt$(result.fersSupplement.monthlyAmount, false) : "Not eligible"} />
-          <Row label="SS at start age" value={fmt$(result.socialSecurity.monthlyBenefitAtStartAge, false)} />
+          <EditableRow
+            label="SS Monthly Benefit (input)"
+            display={fmt$(state.SS_FERS_Monthly_Benefit__c, false)}
+            value={state.SS_FERS_Monthly_Benefit__c}
+            step={10}
+            onCommit={(v) => onUpdate("SS_FERS_Monthly_Benefit__c", Number(v))}
+          />
+          <EditableRow
+            label="SS Start Age"
+            display={String(state.SS_FERS_Start_Age__c)}
+            value={state.SS_FERS_Start_Age__c}
+            step={1}
+            onCommit={(v) => onUpdate("SS_FERS_Start_Age__c", Number(v))}
+          />
+          <Row label="SS at start age (computed)" value={fmt$(result.socialSecurity.monthlyBenefitAtStartAge, false)} />
           <Row label="SS Full Retirement Age" value={String(result.socialSecurity.fullRetirementAge)} />
 
           <SectionLabel>TSP</SectionLabel>
-          <Row label="Total balance at retirement" value={fmt$(result.tsp.totalAtRetirement, false)} />
-          <Row label="Traditional" value={fmt$(result.tsp.traditionalAtRetirement, false)} />
-          <Row label="Roth" value={fmt$(result.tsp.rothAtRetirement, false)} />
+          <EditableRow label="G Fund balance" display={fmt$(state.TSP_Trad_G_Balance__c, false)} value={state.TSP_Trad_G_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Trad_G_Balance__c", Number(v))} />
+          <EditableRow label="F Fund balance" display={fmt$(state.TSP_Trad_F_Balance__c, false)} value={state.TSP_Trad_F_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Trad_F_Balance__c", Number(v))} />
+          <EditableRow label="C Fund balance" display={fmt$(state.TSP_Trad_C_Balance__c, false)} value={state.TSP_Trad_C_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Trad_C_Balance__c", Number(v))} />
+          <EditableRow label="S Fund balance" display={fmt$(state.TSP_Trad_S_Balance__c, false)} value={state.TSP_Trad_S_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Trad_S_Balance__c", Number(v))} />
+          <EditableRow label="I Fund balance" display={fmt$(state.TSP_Trad_I_Balance__c, false)} value={state.TSP_Trad_I_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Trad_I_Balance__c", Number(v))} />
+          <EditableRow label="L Fund balance" display={fmt$(state.TSP_Trad_L_Balance__c, false)} value={state.TSP_Trad_L_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Trad_L_Balance__c", Number(v))} />
+          <EditableRow label="Withdrawal Age" display={String(state.TSP_Withdrawal_Age_Years__c)} value={state.TSP_Withdrawal_Age_Years__c} step={1} onCommit={(v) => onUpdate("TSP_Withdrawal_Age_Years__c", Number(v))} />
+          <Row label="Total at retirement (computed)" value={fmt$(result.tsp.totalAtRetirement, false)} />
           <Row label="Monthly withdrawal" value={`${fmt$(result.tsp.monthlyWithdrawal, false)}/mo`} />
 
           <SectionLabel>FEGLI &amp; FEHB</SectionLabel>
           <Row label="FEGLI Basic at retirement" value={fmt$(result.fegli.currentCoverage.basic, false)} />
-          <Row label="FEHB monthly premium (current)" value={`${fmt$(result.fehb.currentMonthlyPremium, false)}/mo`} />
+          <EditableRow
+            label="FEHB Biweekly Premium"
+            display={fmt$(state.FEHB_Biweekly_Premium__c)}
+            value={state.FEHB_Biweekly_Premium__c}
+            step={1}
+            onCommit={(v) => onUpdate("FEHB_Biweekly_Premium__c", Number(v))}
+          />
+          <EditableRow
+            label="FEHB Annual Increase (%)"
+            display={`${state.FEHB_Annual_Increase__c}%`}
+            value={state.FEHB_Annual_Increase__c}
+            step={0.25}
+            onCommit={(v) => onUpdate("FEHB_Annual_Increase__c", Number(v))}
+          />
+          <Row label="FEHB monthly (current)" value={`${fmt$(result.fehb.currentMonthlyPremium, false)}/mo`} />
           <Row label="FEHB monthly at retirement" value={`${fmt$(result.fehb.retirementMonthlyPremium, false)}/mo`} />
 
           {/* Charts */}
@@ -489,13 +545,52 @@ function PlanColumn(props: {
             <Row label="Current Age" value={String(currentAge)} />
           </div>
           <div>
-            <SectionLabel>AT RETIREMENT</SectionLabel>
-            <Row label="System" value={state.Retirement_System__c} />
-            <Row label="Retirement Date" value={fmtDate(state.Desired_Retirement_Date__c)} />
-            <Row label="High-3 Average" value={fmt$(result.annuity.high3Average, false)} />
-            <Row label="Annual COLA" value={`${state.COLA_Adjustment__c}%`} />
+            <SectionLabel>AT RETIREMENT (CLICK ANY VALUE TO EDIT)</SectionLabel>
+            <EditableRow
+              label="System"
+              display={state.Retirement_System__c}
+              value={state.Retirement_System__c}
+              type="select"
+              options={[{ label: "FERS", value: "FERS" }, { label: "CSRS", value: "CSRS" }, { label: "FERS Transfer", value: "xFERS" }]}
+              onCommit={(v) => onUpdate("Retirement_System__c", String(v))}
+            />
+            <EditableRow
+              label="Retirement Date"
+              display={fmtDate(state.Desired_Retirement_Date__c)}
+              value={state.Desired_Retirement_Date__c}
+              type="date"
+              onCommit={(v) => onUpdate("Desired_Retirement_Date__c", String(v))}
+            />
+            <EditableRow
+              label="SCD"
+              display={fmtDate(state.Service_Computation_Date__c)}
+              value={state.Service_Computation_Date__c}
+              type="date"
+              onCommit={(v) => onUpdate("Service_Computation_Date__c", String(v))}
+            />
+            <EditableRow
+              label="Annual Salary"
+              display={fmt$(state.Current_Annual_Salary__c, false)}
+              value={state.Current_Annual_Salary__c}
+              step={1000}
+              onCommit={(v) => onUpdate("Current_Annual_Salary__c", Number(v))}
+            />
+            <EditableRow
+              label="Salary Increase (%)"
+              display={`${state.Expected_Salary_Increase__c}%`}
+              value={state.Expected_Salary_Increase__c}
+              step={0.25}
+              onCommit={(v) => onUpdate("Expected_Salary_Increase__c", Number(v))}
+            />
+            <Row label="High-3 Average (computed)" value={fmt$(result.annuity.high3Average, false)} />
+            <EditableRow
+              label="Annual COLA (%)"
+              display={`${state.COLA_Adjustment__c}%`}
+              value={state.COLA_Adjustment__c}
+              step={0.25}
+              onCommit={(v) => onUpdate("COLA_Adjustment__c", Number(v))}
+            />
             <Row label="Multiplier" value={`${(result.annuity.multiplier * 100).toFixed(2)}%`} />
-            <Row label="Sick Leave Hours" value={(state.Sick_Leave_Hours_To_Date__c || 0).toLocaleString()} />
           </div>
         </div>
       )}
@@ -579,6 +674,116 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
     }}>{children}</div>
   );
 }
+
+/**
+ * Inline-editable row. Click the value → swap to input → blur/Enter to commit.
+ * The visible value is whatever the parent passes via `display`; the underlying
+ * editable value is `value` (number/string), and `onCommit` writes it back to
+ * the plan state. The same recompute pipeline fires (via React state).
+ */
+function EditableRow({
+  label,
+  display,
+  value,
+  type = "number",
+  step = 1,
+  options,
+  onCommit,
+}: {
+  label: string;
+  display: string;
+  value: number | string;
+  type?: "number" | "text" | "date" | "select";
+  step?: number;
+  options?: { label: string; value: string }[];
+  onCommit: (v: number | string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<string>(String(value));
+  const [hover, setHover] = useState(false);
+
+  const commit = () => {
+    setEditing(false);
+    if (type === "number") {
+      const n = Number(draft);
+      if (Number.isFinite(n) && n !== Number(value)) onCommit(n);
+    } else if (draft !== String(value)) {
+      onCommit(draft);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        padding: "5px 0",
+        borderBottom: "0.5px solid #eef0f3",
+        fontSize: 13,
+      }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      <span style={{ color: "#374151" }}>{label}</span>
+      {editing ? (
+        type === "select" ? (
+          <select
+            autoFocus
+            value={draft}
+            onChange={(e) => { setDraft(e.target.value); onCommit(e.target.value); setEditing(false); }}
+            onBlur={() => setEditing(false)}
+            style={inlineInputStyle}
+          >
+            {(options ?? []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        ) : (
+          <input
+            autoFocus
+            type={type}
+            step={type === "number" ? step : undefined}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commit();
+              if (e.key === "Escape") { setDraft(String(value)); setEditing(false); }
+            }}
+            style={inlineInputStyle}
+          />
+        )
+      ) : (
+        <span
+          onClick={() => { setDraft(String(value)); setEditing(true); }}
+          title="Click to edit"
+          style={{
+            color: "#16253C",
+            fontWeight: 600,
+            cursor: "pointer",
+            borderBottom: hover ? "1px dashed #C7A356" : "1px dashed transparent",
+            paddingBottom: 1,
+            transition: "border-color 0.1s",
+          }}
+        >
+          {display}
+          {hover && <span style={{ marginLeft: 6, fontSize: 10, color: "#C7A356", opacity: 0.7 }}>✎</span>}
+        </span>
+      )}
+    </div>
+  );
+}
+
+const inlineInputStyle: React.CSSProperties = {
+  fontSize: 13,
+  fontWeight: 600,
+  color: "#16253C",
+  textAlign: "right",
+  padding: "2px 6px",
+  border: "1px solid #C7A356",
+  borderRadius: 3,
+  background: "#fef9ee",
+  fontFamily: FONT_BODY,
+  minWidth: 110,
+};
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
