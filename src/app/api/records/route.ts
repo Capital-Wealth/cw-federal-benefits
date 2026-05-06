@@ -48,6 +48,25 @@ export async function GET(request: NextRequest) {
     let dateOfBirth: string | null = null;
     let stateOfResidence: string | null = null;
     let address: string | null = null;
+
+    // Advisor identity — the report is signed by whoever runs it. Prefer the
+    // explicit Advisor__c lookup; if blank, fall back to record Owner. Either
+    // resolves to a User record we read Name / Email / Phone from.
+    let advisorName: string | null = null;
+    let advisorEmail: string | null = null;
+    let advisorPhone: string | null = null;
+    const advisorUserId = (record.Advisor__c as string | null) || (record.OwnerId as string | null);
+    if (advisorUserId) {
+      const advisorResult = await conn.query(
+        `SELECT Name, Email, Phone FROM User WHERE Id = '${advisorUserId}' LIMIT 1`,
+      );
+      if (advisorResult.records.length > 0) {
+        const u = advisorResult.records[0] as Record<string, unknown>;
+        advisorName = (u.Name as string) ?? null;
+        advisorEmail = (u.Email as string) ?? null;
+        advisorPhone = (u.Phone as string) ?? null;
+      }
+    }
     if (record.Contact__c) {
       const result = await conn.query(
         `SELECT Name, Birthdate, MailingStreet, MailingCity, MailingState, MailingPostalCode FROM Contact WHERE Id = '${record.Contact__c}' LIMIT 1`,
@@ -256,6 +275,13 @@ export async function GET(request: NextRequest) {
       // Annuity extras
       colaAdjustment: record.COLA_Adjustment__c,
       estimatedHigh3Increase: record.Estimated_High_3_Increase__c,
+
+      // Advisor identity — pulled from FBI Advisor__c (or OwnerId fallback)
+      // above. Lets the report sign with whoever actually owns the case.
+      advisorName,
+      advisorEmail,
+      advisorPhone,
+      advisorCompany: null, // single-tenant; builder supplies "Capital Wealth"
 
       // AI parsing metadata
       aiParseConfidence: record.AI_Parse_Confidence__c,

@@ -283,21 +283,33 @@ export default class FederalBenefitsActions extends LightningElement {
             const id = this.isFBIRecord ? this.recordId : this.intakeId;
             const result = await generateReport({ intakeId: id });
             if (result.reportSuccess) {
+                const assumptions = Array.isArray(result.assumptionsApplied) ? result.assumptionsApplied : [];
+                const baseMsg = result.employeeName ? `Report ready for ${result.employeeName}.` : 'Report generated.';
+                const assumptionMsg = assumptions.length
+                    ? ` ${assumptions.length} assumption(s) applied: ${assumptions.join(' • ')}`
+                    : '';
                 this.dispatchEvent(new ShowToastEvent({
                     title: 'Federal Benefits Gap Analysis Generated',
-                    message: result.employeeName ? `Report ready for ${result.employeeName}` : 'Report generated successfully.',
-                    variant: 'success'
+                    message: baseMsg + assumptionMsg,
+                    variant: 'success',
+                    mode: assumptions.length ? 'sticky' : 'dismissible'
                 }));
+                window.location.reload();
             } else {
+                const missing = Array.isArray(result.missingFields) ? result.missingFields : [];
+                const detail = missing.length
+                    ? missing.join(' • ')
+                    : (result.reportError || 'Report could not be generated.');
                 this.dispatchEvent(new ShowToastEvent({
-                    title: 'Report Queued',
-                    message: 'Report generation initiated. The report builder will process it shortly.',
-                    variant: 'success'
+                    title: 'Report not generated',
+                    message: detail,
+                    variant: 'error',
+                    mode: 'sticky'
                 }));
+                this.error = detail;
             }
-            window.location.reload();
         } catch (e) {
-            this.dispatchEvent(new ShowToastEvent({ title: 'Error', message: e.body?.message || e.message, variant: 'error' }));
+            this.dispatchEvent(new ShowToastEvent({ title: 'Error', message: e.body?.message || e.message, variant: 'error', mode: 'sticky' }));
         } finally { this.isLoading = false; }
     }
 

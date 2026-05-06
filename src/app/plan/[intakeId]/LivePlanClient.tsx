@@ -346,9 +346,40 @@ function PlanColumn(props: {
 }) {
   const { label, highlighted, state, result, clientName, address, dateOfBirth, isComparison } = props;
   if (!result) {
+    // Diagnose what's missing so the advisor knows what to enter.
+    const missing: string[] = [];
+    if (!state.Service_Computation_Date__c) missing.push("Service Computation Date");
+    if (!state.Desired_Retirement_Date__c) missing.push("Retirement Date");
+    if (!dateOfBirth) missing.push("Date of Birth (on the linked Contact)");
+    if (!state.Current_Annual_Salary__c) missing.push("Current Annual Salary");
+    if (!state.Retirement_System__c) missing.push("Retirement System (FERS/CSRS)");
+
     return (
-      <main style={{ background: "#fff", padding: 32, borderRadius: 4, opacity: 0.5 }}>
-        Calculating…
+      <main style={{
+        background: "#fff", padding: 32, borderRadius: 4,
+        boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+        minHeight: 320,
+      }}>
+        <div style={{ fontSize: 10, color: "#C7A356", letterSpacing: 3, fontWeight: 600 }}>READY TO RUN — MISSING INPUTS</div>
+        <h1 style={{ fontFamily: FONT_DISPLAY, fontSize: 26, color: "#16253C", margin: "4px 0 8px" }}>
+          A few inputs needed before we can run the projection
+        </h1>
+        <div style={{ width: 50, height: 2, background: "#C7A356", marginBottom: 16 }} />
+        <p style={{ fontSize: 13, color: "#374151", lineHeight: 1.6, marginBottom: 16 }}>
+          {missing.length > 0
+            ? <>Enter the following on the right to see the live numbers:</>
+            : <>The calc engine encountered an issue — try adjusting an input on the right.</>}
+        </p>
+        {missing.length > 0 && (
+          <ul style={{ paddingLeft: 20, fontSize: 13, color: "#16253C", lineHeight: 1.8 }}>
+            {missing.map((m) => <li key={m}><strong>{m}</strong></li>)}
+          </ul>
+        )}
+        <div style={{ marginTop: 24, padding: 14, background: "#fef9ee", borderLeft: "3px solid #C7A356", fontSize: 12, color: "#374151", lineHeight: 1.5 }}>
+          <strong>Tip:</strong> If the documents have already been uploaded but a value is missing,
+          it likely wasn't extracted by the AI parser. Type it in here — the value will save
+          back to Salesforce when you click "Save Changes".
+        </div>
       </main>
     );
   }

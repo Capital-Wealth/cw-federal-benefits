@@ -351,12 +351,35 @@ public with sharing class FederalBenefitsController {
 
         if (calcRes.getStatusCode() != 200) {
             result.put('reportSuccess', false);
-            result.put('reportError', 'Calculation failed: ' + calcRes.getBody().left(200));
+            // 422 = validation error with structured { error, missing[], warnings[] }.
+            // Surface the missing-field list so the LWC can show the advisor exactly
+            // what to populate before retrying instead of a generic "queued" toast.
+            try {
+                Map<String, Object> errBody = (Map<String, Object>) JSON.deserializeUntyped(calcRes.getBody());
+                if (errBody.get('error') != null) {
+                    result.put('reportError', String.valueOf(errBody.get('error')));
+                }
+                if (errBody.get('missing') != null) {
+                    result.put('missingFields', errBody.get('missing'));
+                }
+                if (errBody.get('warnings') != null) {
+                    result.put('dataWarnings', errBody.get('warnings'));
+                }
+            } catch (Exception ignored) {
+                result.put('reportError', 'Calculation failed (' + calcRes.getStatusCode() + '): ' + calcRes.getBody().left(300));
+            }
+            if (result.get('reportError') == null) {
+                result.put('reportError', 'Calculation failed (' + calcRes.getStatusCode() + ')');
+            }
             return result;
         }
 
         Map<String, Object> calcData = (Map<String, Object>) JSON.deserializeUntyped(calcRes.getBody());
         String employeeName = (String) calcData.get('employeeName');
+        // Carry the assumptions list back so the LWC can show advisors which
+        // soft defaults the engine substituted for missing fields.
+        Object appliedAssumptions = calcData.get('assumptionsApplied');
+        Object dataWarnings = calcData.get('dataWarnings');
 
         // Step 2: Generate PDF
         HttpRequest pdfReq = new HttpRequest();
@@ -373,7 +396,7 @@ public with sharing class FederalBenefitsController {
 
         if (pdfRes.getStatusCode() != 200) {
             result.put('reportSuccess', false);
-            result.put('reportError', 'PDF generation failed: ' + pdfRes.getStatusCode());
+            result.put('reportError', 'PDF generation failed (' + pdfRes.getStatusCode() + '): ' + pdfRes.getBody().left(300));
             return result;
         }
 
@@ -455,6 +478,8 @@ public with sharing class FederalBenefitsController {
         result.put('reportSuccess', true);
         result.put('employeeName', employeeName);
         result.put('contentDocumentId', cv.ContentDocumentId);
+        result.put('assumptionsApplied', appliedAssumptions);
+        result.put('dataWarnings', dataWarnings);
         result.put('message', 'Federal Benefits Gap Analysis generated and attached to the record, contact, and account.');
         return result;
     }
