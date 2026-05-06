@@ -418,9 +418,34 @@ function PlanColumn(props: {
       {/* Tiles */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
         <Tile label="HIGH-3" value={fmt$(result.annuity.high3Average, false)} />
-        <Tile label="SERVICE" value={`${result.annuity.totalServiceYears}y ${result.annuity.totalServiceMonths}m`} />
+        <Tile label="TOTAL SERVICE" value={`${result.annuity.totalServiceYears}y ${result.annuity.totalServiceMonths}m`} />
         <Tile label="AGE @ RET" value={String(ageAtRetirement)} />
       </div>
+
+      {/* Service Breakdown — shows how civilian + sick leave roll into total */}
+      <SectionLabel>SERVICE BREAKDOWN</SectionLabel>
+      {(() => {
+        const civYrs = state.Service_Computation_Date__c && state.Desired_Retirement_Date__c
+          ? (() => {
+              const scd = new Date(state.Service_Computation_Date__c);
+              const ret = new Date(state.Desired_Retirement_Date__c);
+              const months = Math.max(0, (ret.getFullYear() - scd.getFullYear()) * 12 + (ret.getMonth() - scd.getMonth()));
+              return { y: Math.floor(months / 12), m: months % 12 };
+            })()
+          : { y: 0, m: 0 };
+        // Sick leave credit = floor(hours / 174) per OPM 2087 Hour Chart
+        const sickHrs = state.Sick_Leave_Hours_To_Date__c || 0;
+        const sickMonthsTotal = Math.floor(sickHrs / 174);
+        const sickY = Math.floor(sickMonthsTotal / 12);
+        const sickM = sickMonthsTotal % 12;
+        return (
+          <>
+            <Row label="Civilian Service (SCD → Retirement)" value={`${civYrs.y}y ${civYrs.m}m`} />
+            <Row label={`Sick Leave Credit (${sickHrs.toLocaleString()} hrs ÷ 174 hr/mo)`} value={`${sickY}y ${sickM}m`} />
+            <Row label="Total Creditable Service" value={`${result.annuity.totalServiceYears}y ${result.annuity.totalServiceMonths}m`} />
+          </>
+        );
+      })()}
 
       {/* Survivor */}
       <SectionLabel>SURVIVOR — {state.Survivor_Benefit_FERS__c}</SectionLabel>
@@ -470,6 +495,7 @@ function PlanColumn(props: {
             <Row label="High-3 Average" value={fmt$(result.annuity.high3Average, false)} />
             <Row label="Annual COLA" value={`${state.COLA_Adjustment__c}%`} />
             <Row label="Multiplier" value={`${(result.annuity.multiplier * 100).toFixed(2)}%`} />
+            <Row label="Sick Leave Hours" value={(state.Sick_Leave_Hours_To_Date__c || 0).toLocaleString()} />
           </div>
         </div>
       )}
