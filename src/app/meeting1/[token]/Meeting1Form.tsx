@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   SECTIONS,
   ASSET_FIELDS,
@@ -8,6 +8,12 @@ import {
   ALL_FIELD_APIS,
   type FieldDef,
 } from "@/lib/meeting1/fields";
+
+// Capital Wealth brand
+const NAVY = "#16253C";
+const GOLD = "#C7A356";
+const LOGO_WHITE =
+  "https://www.capitalwealth.com/assets/images/logos/logo-horizontal-white.png";
 
 type FieldValue = string | boolean | number | null;
 type RecordMap = Record<string, FieldValue>;
@@ -17,16 +23,34 @@ interface AssetRow {
   [key: string]: FieldValue | undefined;
 }
 
+/** Fields that don't count toward "prefilled" — they're set by Apex on every create. */
+const SYSTEM_PREFILL_KEYS = new Set([
+  "Status__c",
+  "Intake_Date__c",
+  "Builder_URL__c",
+]);
+
+function isPrefilled(api: string, v: FieldValue): boolean {
+  if (SYSTEM_PREFILL_KEYS.has(api)) return false;
+  if (v === null || v === undefined) return false;
+  if (typeof v === "string" && v.trim() === "") return false;
+  if (typeof v === "boolean" && v === false) return false;
+  return true;
+}
+
 export default function Meeting1Form({ token }: { token: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [accountName, setAccountName] = useState<string>("");
-  const [intakeName, setIntakeName] = useState<string>("");
+  const [accountName, setAccountName] = useState("");
+  const [intakeName, setIntakeName] = useState("");
   const [record, setRecord] = useState<RecordMap>({});
   const [assets, setAssets] = useState<AssetRow[]>([]);
+  const [prefilledCount, setPrefilledCount] = useState(0);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [showToast, setShowToast] = useState(false);
   const [done, setDone] = useState(false);
+  const toastTimer = useRef<number | null>(null);
 
   // ---- load ----
   useEffect(() => {
@@ -42,12 +66,17 @@ export default function Meeting1Form({ token }: { token: string }) {
         }
         setAccountName(data.accountName || "");
         setIntakeName(data.intakeName || "");
+
         const rec: RecordMap = {};
+        let prefilled = 0;
         for (const api of ALL_FIELD_APIS) {
           const v = data.record?.[api];
           rec[api] = v === undefined ? null : (v as FieldValue);
+          if (isPrefilled(api, rec[api])) prefilled++;
         }
         setRecord(rec);
+        setPrefilledCount(prefilled);
+
         const incoming = Array.isArray(data.assets) ? data.assets : [];
         setAssets(
           incoming.map(
@@ -73,7 +102,6 @@ export default function Meeting1Form({ token }: { token: string }) {
     setRecord((r) => ({ ...r, [api]: value }));
   }, []);
 
-  // ---- assets ----
   const addAsset = () =>
     setAssets((a) => [...a, { Category__c: ASSET_CATEGORIES[0] }]);
   const removeAsset = (i: number) =>
@@ -81,7 +109,21 @@ export default function Meeting1Form({ token }: { token: string }) {
   const setAssetField = (i: number, api: string, value: FieldValue) =>
     setAssets((a) => a.map((row, idx) => (idx === i ? { ...row, [api]: value } : row)));
 
-  // ---- payload ----
+  const sectionProgress = useMemo(() => {
+    // count sections that have ≥1 non-empty field as "started"
+    let started = 0;
+    for (const s of SECTIONS) {
+      for (const f of s.fields) {
+        const v = record[f.api];
+        if (isPrefilled(f.api, v ?? null)) {
+          started++;
+          break;
+        }
+      }
+    }
+    return { started, total: SECTIONS.length };
+  }, [record]);
+
   const buildPayload = () => {
     const fields: RecordMap = {};
     for (const api of ALL_FIELD_APIS) {
@@ -119,7 +161,11 @@ export default function Meeting1Form({ token }: { token: string }) {
       if (complete) {
         setDone(true);
       } else {
-        setSavedAt(new Date().toLocaleTimeString());
+        const at = new Date().toLocaleTimeString();
+        setSavedAt(at);
+        setShowToast(true);
+        if (toastTimer.current) window.clearTimeout(toastTimer.current);
+        toastTimer.current = window.setTimeout(() => setShowToast(false), 2200);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Network error");
@@ -128,73 +174,80 @@ export default function Meeting1Form({ token }: { token: string }) {
     }
   };
 
-  // ---- render states ----
+  // ---- render ----
   if (loading) {
     return (
-      <Shell>
-        <p className="text-slate-500">Loading intake…</p>
-      </Shell>
+      <Frame>
+        <p className="text-zinc-500 mt-8">Loading intake…</p>
+      </Frame>
     );
   }
   if (error && Object.keys(record).length === 0) {
     return (
-      <Shell>
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">
+      <Frame>
+        <div className="mt-8 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">
           {error}
         </div>
-      </Shell>
+      </Frame>
     );
   }
   if (done) {
-    return (
-      <Shell>
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-6">
-          <h2 className="text-xl font-semibold text-emerald-800">Intake complete</h2>
-          <p className="mt-2 text-emerald-700">
-            Saved back to Salesforce. Before you hang up, confirm the two next steps out loud:
-          </p>
-          <ol className="mt-3 list-decimal space-y-1 pl-5 text-emerald-700">
-            <li>The advisor builds their Retirement Money Map — fee analysis, risk assessment, income plan.</li>
-            <li>
-              They&apos;ll get an email with a risk-tolerance questionnaire, an expense plan, and a
-              secure upload link for statements, Social Security, and tax returns.
-            </li>
-          </ol>
-          <p className="mt-3 font-medium text-emerald-800">
-            And make sure Meeting 2 is on the calendar before the call ends.
-          </p>
-        </div>
-      </Shell>
-    );
+    return <DoneScreen accountName={accountName} />;
   }
 
   return (
-    <Shell>
-      <header className="mb-6">
-        <p className="text-sm font-medium uppercase tracking-wide text-blue-600">
-          Meeting 1 — Discovery Visit
-        </p>
-        <h1 className="text-2xl font-semibold text-slate-900">
-          {accountName || "Intake"}{" "}
-          {intakeName && <span className="text-slate-400">· {intakeName}</span>}
-        </h1>
-        <p className="mt-1 text-sm text-slate-500">
-          You&apos;re the guide — they&apos;re the hero. This is the introduction, not the
-          commitment. Take the vitals; the advisor is the doctor in Meeting 2.
-        </p>
-      </header>
+    <Frame
+      header={
+        <HeaderBar
+          accountName={accountName}
+          intakeName={intakeName}
+          progress={sectionProgress}
+        />
+      }
+    >
+      {prefilledCount > 0 && (
+        <div
+          className="mt-5 mb-4 rounded-md border-l-4 px-4 py-3 text-sm"
+          style={{ borderLeftColor: GOLD, backgroundColor: "#FFFBEC", color: NAVY }}
+        >
+          <span className="font-semibold">
+            {prefilledCount} {prefilledCount === 1 ? "field" : "fields"} pre-filled from Salesforce.
+          </span>{" "}
+          Edit anything you need to correct.
+        </div>
+      )}
 
-      {SECTIONS.map((section) => (
+      <p className="mb-6 text-sm italic text-zinc-600">
+        You&apos;re the guide — they&apos;re the hero. This is Meeting&nbsp;1: take the
+        vitals, not diagnose. The advisor is the doctor in Meeting&nbsp;2.
+      </p>
+
+      {SECTIONS.map((section, idx) => (
         <section
           key={section.id}
-          className="mb-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
+          className="mb-6 rounded-xl border border-zinc-200 bg-white p-5 shadow-sm"
         >
-          <h2 className="text-lg font-semibold text-slate-900">{section.title}</h2>
-          <div className="mt-2 space-y-1.5 rounded-lg bg-blue-50 p-3 text-sm text-blue-900">
-            {section.coaching.map((line, i) => (
-              <p key={i}>{line}</p>
-            ))}
-          </div>
+          <header className="flex items-baseline gap-3">
+            <span
+              className="font-mono text-sm font-bold tabular-nums"
+              style={{ color: GOLD }}
+            >
+              §{String(idx + 1).padStart(2, "0")}
+            </span>
+            <h2 className="text-lg font-semibold" style={{ color: NAVY }}>
+              {section.title}
+            </h2>
+          </header>
+          {section.coaching.length > 0 && (
+            <div
+              className="mt-3 space-y-1.5 rounded-md border-l-4 px-4 py-2.5 text-sm italic"
+              style={{ borderLeftColor: GOLD, backgroundColor: "#F7F4ED", color: NAVY }}
+            >
+              {section.coaching.map((line, i) => (
+                <p key={i}>{line}</p>
+              ))}
+            </div>
+          )}
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
             {section.fields.map((f) => (
               <Field
@@ -209,18 +262,37 @@ export default function Meeting1Form({ token }: { token: string }) {
       ))}
 
       {/* Assets */}
-      <section className="mb-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-slate-900">Accounts, Assets &amp; Policies</h2>
-        <p className="mt-2 rounded-lg bg-blue-50 p-3 text-sm text-blue-900">
-          One row per item — investments, real estate, life insurance. This is the inventory the
-          advisor builds the Retirement Money Map from.
+      <section className="mb-6 rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
+        <header className="flex items-baseline gap-3">
+          <span
+            className="font-mono text-sm font-bold tabular-nums"
+            style={{ color: GOLD }}
+          >
+            §10
+          </span>
+          <h2 className="text-lg font-semibold" style={{ color: NAVY }}>
+            Accounts, Assets &amp; Policies
+          </h2>
+        </header>
+        <p
+          className="mt-3 rounded-md border-l-4 px-4 py-2.5 text-sm italic"
+          style={{ borderLeftColor: GOLD, backgroundColor: "#F7F4ED", color: NAVY }}
+        >
+          One row per item — investments, real estate, life insurance. This is the
+          inventory the advisor builds the Retirement Money Map from.
         </p>
         <div className="mt-4 space-y-4">
+          {assets.length === 0 && (
+            <p className="text-sm text-zinc-500">
+              No items yet — add one when you&apos;re ready.
+            </p>
+          )}
           {assets.map((row, i) => (
-            <div key={i} className="rounded-lg border border-slate-200 p-4">
+            <div key={i} className="rounded-lg border border-zinc-200 p-4">
               <div className="flex items-center justify-between gap-3">
                 <select
-                  className="rounded-md border border-slate-300 px-3 py-2 text-base"
+                  className="rounded-md border border-zinc-300 px-3 py-2.5 text-base focus:border-[color:var(--cw-navy)] focus:outline-none focus:ring-1"
+                  style={{ ["--cw-navy" as string]: NAVY }}
                   value={row.Category__c}
                   onChange={(e) => setAssetField(i, "Category__c", e.target.value)}
                 >
@@ -253,7 +325,8 @@ export default function Meeting1Form({ token }: { token: string }) {
           <button
             type="button"
             onClick={addAsset}
-            className="rounded-md border border-dashed border-slate-400 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+            className="rounded-md border border-dashed px-4 py-2 text-sm font-medium hover:bg-zinc-50"
+            style={{ borderColor: GOLD, color: NAVY }}
           >
             + Add a row
           </button>
@@ -261,43 +334,151 @@ export default function Meeting1Form({ token }: { token: string }) {
       </section>
 
       {error && (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+        <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           {error}
         </div>
       )}
 
       {/* Sticky action bar */}
-      <div className="sticky bottom-0 -mx-4 flex items-center justify-between gap-3 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
-        <span className="text-sm text-slate-500">
-          {savedAt ? `Progress saved at ${savedAt}` : "Not saved yet"}
-        </span>
-        <div className="flex gap-3">
-          <button
-            type="button"
-            disabled={saving}
-            onClick={() => doSave(false)}
-            className="rounded-md border border-slate-300 px-4 py-2.5 text-base font-medium text-slate-700 disabled:opacity-50"
-          >
-            Save Progress
-          </button>
-          <button
-            type="button"
-            disabled={saving}
-            onClick={() => doSave(true)}
-            className="rounded-md bg-blue-600 px-5 py-2.5 text-base font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            {saving ? "Saving…" : "Complete Intake"}
-          </button>
+      <div
+        className="sticky bottom-0 -mx-4 border-t-2 px-4 py-3 backdrop-blur"
+        style={{ borderTopColor: NAVY, backgroundColor: "rgba(255,255,255,0.96)" }}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-xs text-zinc-500">
+            {savedAt ? `Last saved ${savedAt}` : "Not saved yet — your progress lives only in this tab."}
+          </span>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => doSave(false)}
+              className="rounded-md border-2 px-4 py-2.5 text-base font-medium disabled:opacity-50"
+              style={{ borderColor: NAVY, color: NAVY }}
+            >
+              Save Progress
+            </button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => doSave(true)}
+              className="rounded-md px-5 py-2.5 text-base font-semibold text-white disabled:opacity-50"
+              style={{ backgroundColor: NAVY }}
+            >
+              {saving ? "Saving…" : "Complete Intake"}
+            </button>
+          </div>
         </div>
       </div>
-    </Shell>
+
+      {/* Toast */}
+      {showToast && (
+        <div className="fixed bottom-20 left-1/2 z-30 -translate-x-1/2 rounded-full bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-lg">
+          Progress saved ✓
+        </div>
+      )}
+    </Frame>
   );
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
+// ---------- subcomponents ----------
+
+function Frame({
+  header,
+  children,
+}: {
+  header?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="min-h-screen bg-slate-100">
-      <div className="mx-auto max-w-3xl px-4 py-6">{children}</div>
+    <div className="min-h-screen bg-zinc-100">
+      {header}
+      <div className="mx-auto max-w-3xl px-4 pb-12">{children}</div>
+    </div>
+  );
+}
+
+function HeaderBar({
+  accountName,
+  intakeName,
+  progress,
+}: {
+  accountName: string;
+  intakeName: string;
+  progress: { started: number; total: number };
+}) {
+  const pct = Math.round((progress.started / progress.total) * 100);
+  return (
+    <header className="sticky top-0 z-20" style={{ backgroundColor: NAVY }}>
+      <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-4 py-3">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={LOGO_WHITE} alt="Capital Wealth" className="h-7" />
+        <div className="text-right">
+          <div className="text-[10px] uppercase tracking-widest text-white/60">
+            Meeting 1 Intake {intakeName && `· ${intakeName}`}
+          </div>
+          <div className="text-sm font-semibold text-white">
+            {accountName || "—"}
+          </div>
+        </div>
+      </div>
+      <div className="h-1 w-full bg-white/10">
+        <div
+          className="h-full transition-all"
+          style={{ width: `${pct}%`, backgroundColor: GOLD }}
+        />
+      </div>
+    </header>
+  );
+}
+
+function DoneScreen({ accountName }: { accountName: string }) {
+  return (
+    <div className="min-h-screen bg-zinc-100">
+      <header className="sticky top-0 z-20" style={{ backgroundColor: NAVY }}>
+        <div className="mx-auto max-w-3xl px-4 py-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={LOGO_WHITE} alt="Capital Wealth" className="h-7" />
+        </div>
+      </header>
+      <div className="mx-auto max-w-2xl px-4 py-12">
+        <div className="rounded-xl bg-white p-8 shadow-sm">
+          <div
+            className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full text-3xl"
+            style={{ backgroundColor: GOLD, color: NAVY }}
+          >
+            ✓
+          </div>
+          <h1 className="text-center text-2xl font-semibold" style={{ color: NAVY }}>
+            Intake complete
+          </h1>
+          <p className="mt-2 text-center text-sm text-zinc-600">
+            Saved to {accountName || "the account"} in Salesforce.
+          </p>
+          <div
+            className="mt-6 rounded-md border-l-4 px-4 py-3 text-sm"
+            style={{ borderLeftColor: GOLD, backgroundColor: "#F7F4ED", color: NAVY }}
+          >
+            <p className="mb-2 font-semibold">
+              Before you hang up, confirm two things out loud:
+            </p>
+            <ol className="list-decimal space-y-1 pl-5">
+              <li>
+                The advisor builds their Retirement Money Map — fee analysis, risk
+                assessment, income plan.
+              </li>
+              <li>
+                They&apos;ll get an email with a risk-tolerance questionnaire, an
+                expense plan, and a secure upload link for statements, Social
+                Security, and tax returns.
+              </li>
+            </ol>
+            <p className="mt-3 font-semibold">
+              And make sure Meeting 2 is on the calendar before the call ends.
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -312,7 +493,11 @@ function Field({
   onChange: (v: FieldValue) => void;
 }) {
   const base =
-    "w-full rounded-md border border-slate-300 px-3 py-2.5 text-base focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500";
+    "w-full rounded-md border border-zinc-300 px-3 py-2.5 text-base focus:outline-none focus:ring-2";
+  const focusStyle = {
+    ["--tw-ring-color" as string]: NAVY,
+    borderColor: undefined as string | undefined,
+  };
 
   if (def.type === "checkbox") {
     return (
@@ -321,15 +506,18 @@ function Field({
           type="checkbox"
           checked={value === true}
           onChange={(e) => onChange(e.target.checked)}
-          className="h-5 w-5 rounded border-slate-300"
+          className="h-5 w-5 rounded border-zinc-300"
+          style={{ accentColor: NAVY }}
         />
-        <span className="text-base text-slate-800">{def.label}</span>
+        <span className="text-base text-zinc-800">{def.label}</span>
       </label>
     );
   }
 
   const labelEl = (
-    <span className="mb-1 block text-sm font-medium text-slate-700">{def.label}</span>
+    <span className="mb-1 block text-sm font-medium" style={{ color: NAVY }}>
+      {def.label}
+    </span>
   );
   const strVal = value == null ? "" : String(value);
 
@@ -340,10 +528,11 @@ function Field({
         <textarea
           rows={3}
           className={base}
+          style={focusStyle}
           value={strVal}
           onChange={(e) => onChange(e.target.value)}
         />
-        {def.help && <span className="mt-1 block text-xs text-slate-400">{def.help}</span>}
+        {def.help && <span className="mt-1 block text-xs text-zinc-400">{def.help}</span>}
       </label>
     );
   }
@@ -352,7 +541,12 @@ function Field({
     return (
       <label>
         {labelEl}
-        <select className={base} value={strVal} onChange={(e) => onChange(e.target.value)}>
+        <select
+          className={base}
+          style={focusStyle}
+          value={strVal}
+          onChange={(e) => onChange(e.target.value)}
+        >
           <option value="">— Select —</option>
           {(def.options || []).map((o) => (
             <option key={o} value={o}>
@@ -376,7 +570,7 @@ function Field({
       {labelEl}
       <div className="relative">
         {def.type === "currency" && (
-          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400">
             $
           </span>
         )}
@@ -384,16 +578,17 @@ function Field({
           type={inputType}
           inputMode={inputMode}
           className={`${base} ${def.type === "currency" ? "pl-7" : ""}`}
+          style={focusStyle}
           value={strVal}
           onChange={(e) => onChange(e.target.value)}
         />
         {def.type === "percent" && (
-          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400">
             %
           </span>
         )}
       </div>
-      {def.help && <span className="mt-1 block text-xs text-slate-400">{def.help}</span>}
+      {def.help && <span className="mt-1 block text-xs text-zinc-400">{def.help}</span>}
     </label>
   );
 }
