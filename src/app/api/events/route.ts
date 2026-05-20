@@ -8,6 +8,7 @@ export async function GET() {
       SELECT Id, Name, Type, NumberOfLeads
       FROM Campaign
       WHERE IsActive = true AND Type = 'Federal Benefits'
+        AND (Name LIKE '%Workshop%' OR Name LIKE '%Webinar%' OR Name LIKE '%Seminar%' OR Name LIKE '%Event%')
       ORDER BY Name DESC
       LIMIT 100`;
     const res = await conn.query(soql);
