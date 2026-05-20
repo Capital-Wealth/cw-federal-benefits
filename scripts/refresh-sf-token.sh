@@ -7,6 +7,8 @@
 # silently gets empty output and fails.
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+# macOS cron sets HOME=/var/empty which breaks sf CLI (can't write ~/.sf cache).
+export HOME="/Users/thorsnode"
 
 LOG=/tmp/sf-token-refresh.log
 PROJECT_DIR=/Users/thorsnode/cw-federal-benefits

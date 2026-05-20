@@ -23,6 +23,12 @@ export interface PlanState {
   TSP_Trad_S_Balance__c: number;
   TSP_Trad_I_Balance__c: number;
   TSP_Trad_L_Balance__c: number;
+  TSP_Roth_G_Balance__c: number;
+  TSP_Roth_F_Balance__c: number;
+  TSP_Roth_C_Balance__c: number;
+  TSP_Roth_S_Balance__c: number;
+  TSP_Roth_I_Balance__c: number;
+  TSP_Roth_L_Balance__c: number;
   TSP_Withdrawal_Age_Years__c: number;
   SS_FERS_Monthly_Benefit__c: number;
   SS_FERS_Start_Age__c: number;
@@ -98,12 +104,12 @@ export function buildReportInput(
         { fund: "L", balance: state.TSP_Trad_L_Balance__c, returnRate: 0.07 },
       ],
       rothBalances: [
-        { fund: "G", balance: 0, returnRate: 0.025 },
-        { fund: "F", balance: 0, returnRate: 0.04 },
-        { fund: "C", balance: 0, returnRate: 0.10 },
-        { fund: "S", balance: 0, returnRate: 0.09 },
-        { fund: "I", balance: 0, returnRate: 0.07 },
-        { fund: "L", balance: 0, returnRate: 0.07 },
+        { fund: "G", balance: state.TSP_Roth_G_Balance__c, returnRate: 0.025 },
+        { fund: "F", balance: state.TSP_Roth_F_Balance__c, returnRate: 0.04 },
+        { fund: "C", balance: state.TSP_Roth_C_Balance__c, returnRate: 0.10 },
+        { fund: "S", balance: state.TSP_Roth_S_Balance__c, returnRate: 0.09 },
+        { fund: "I", balance: state.TSP_Roth_I_Balance__c, returnRate: 0.07 },
+        { fund: "L", balance: state.TSP_Roth_L_Balance__c, returnRate: 0.07 },
       ],
       annualContributionTraditional: 0,
       annualContributionRoth: 0,

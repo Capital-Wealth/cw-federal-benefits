@@ -28,6 +28,7 @@ interface Props {
   clientName: string | null;
   dateOfBirth: string | null;
   address: string | null;
+  contactId: string | null;
 }
 
 const EDITABLE_FIELDS: (keyof PlanState)[] = [
@@ -45,6 +46,12 @@ const EDITABLE_FIELDS: (keyof PlanState)[] = [
   "TSP_Trad_S_Balance__c",
   "TSP_Trad_I_Balance__c",
   "TSP_Trad_L_Balance__c",
+  "TSP_Roth_G_Balance__c",
+  "TSP_Roth_F_Balance__c",
+  "TSP_Roth_C_Balance__c",
+  "TSP_Roth_S_Balance__c",
+  "TSP_Roth_I_Balance__c",
+  "TSP_Roth_L_Balance__c",
   "TSP_Withdrawal_Age_Years__c",
   "SS_FERS_Monthly_Benefit__c",
   "SS_FERS_Start_Age__c",
@@ -77,6 +84,12 @@ function buildInitialState(intake: Record<string, unknown>): PlanState {
     TSP_Trad_S_Balance__c: num(intake.TSP_Trad_S_Balance__c),
     TSP_Trad_I_Balance__c: num(intake.TSP_Trad_I_Balance__c),
     TSP_Trad_L_Balance__c: num(intake.TSP_Trad_L_Balance__c),
+    TSP_Roth_G_Balance__c: num(intake.TSP_Roth_G_Balance__c),
+    TSP_Roth_F_Balance__c: num(intake.TSP_Roth_F_Balance__c),
+    TSP_Roth_C_Balance__c: num(intake.TSP_Roth_C_Balance__c),
+    TSP_Roth_S_Balance__c: num(intake.TSP_Roth_S_Balance__c),
+    TSP_Roth_I_Balance__c: num(intake.TSP_Roth_I_Balance__c),
+    TSP_Roth_L_Balance__c: num(intake.TSP_Roth_L_Balance__c),
     TSP_Withdrawal_Age_Years__c: num(intake.TSP_Withdrawal_Age_Years__c),
     SS_FERS_Monthly_Benefit__c: num(intake.SS_FERS_Monthly_Benefit__c),
     SS_FERS_Start_Age__c: num(intake.SS_FERS_Start_Age__c),
@@ -91,8 +104,9 @@ export default function LivePlanClient({
   session,
   initialIntake,
   clientName,
-  dateOfBirth,
+  dateOfBirth: initialDob,
   address,
+  contactId,
 }: Props) {
   const initial = buildInitialState(initialIntake);
 
@@ -101,6 +115,11 @@ export default function LivePlanClient({
   const [active, setActive] = useState<ActivePlan>("A");
   const [savedA, setSavedA] = useState<PlanState>(initial);
 
+  // DOB lives on Contact, not the FBI. We track it here so the user can edit
+  // it inline; on save, the API endpoint writes it back to Contact.Birthdate.
+  const [dateOfBirth, setDateOfBirth] = useState<string | null>(initialDob);
+  const [savedDob, setSavedDob] = useState<string | null>(initialDob);
+
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [message, setMessage] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
@@ -108,7 +127,7 @@ export default function LivePlanClient({
   const currentState = active === "A" ? planA : planB ?? initial;
   const setCurrent = active === "A" ? setPlanA : setPlanB;
 
-  const dirty = JSON.stringify(planA) !== JSON.stringify(savedA);
+  const dirty = JSON.stringify(planA) !== JSON.stringify(savedA) || dateOfBirth !== savedDob;
 
   // Run the full calc engine for each scenario.
   const meta = {
@@ -289,7 +308,7 @@ export default function LivePlanClient({
               <NumInput label="COLA Assumption (%)" value={currentState.COLA_Adjustment__c} onChange={(v) => update("COLA_Adjustment__c", v)} step={0.25} />
             </Group>
 
-            <Group title="TSP">
+            <Group title="TSP — Traditional">
               <NumInput label="G Fund" value={currentState.TSP_Trad_G_Balance__c} onChange={(v) => update("TSP_Trad_G_Balance__c", v)} />
               <NumInput label="F Fund" value={currentState.TSP_Trad_F_Balance__c} onChange={(v) => update("TSP_Trad_F_Balance__c", v)} />
               <NumInput label="C Fund" value={currentState.TSP_Trad_C_Balance__c} onChange={(v) => update("TSP_Trad_C_Balance__c", v)} />
@@ -297,6 +316,15 @@ export default function LivePlanClient({
               <NumInput label="I Fund" value={currentState.TSP_Trad_I_Balance__c} onChange={(v) => update("TSP_Trad_I_Balance__c", v)} />
               <NumInput label="L Fund" value={currentState.TSP_Trad_L_Balance__c} onChange={(v) => update("TSP_Trad_L_Balance__c", v)} />
               <NumInput label="Withdrawal Age" value={currentState.TSP_Withdrawal_Age_Years__c} onChange={(v) => update("TSP_Withdrawal_Age_Years__c", v)} step={1} />
+            </Group>
+
+            <Group title="TSP — Roth">
+              <NumInput label="G Fund" value={currentState.TSP_Roth_G_Balance__c} onChange={(v) => update("TSP_Roth_G_Balance__c", v)} />
+              <NumInput label="F Fund" value={currentState.TSP_Roth_F_Balance__c} onChange={(v) => update("TSP_Roth_F_Balance__c", v)} />
+              <NumInput label="C Fund" value={currentState.TSP_Roth_C_Balance__c} onChange={(v) => update("TSP_Roth_C_Balance__c", v)} />
+              <NumInput label="S Fund" value={currentState.TSP_Roth_S_Balance__c} onChange={(v) => update("TSP_Roth_S_Balance__c", v)} />
+              <NumInput label="I Fund" value={currentState.TSP_Roth_I_Balance__c} onChange={(v) => update("TSP_Roth_I_Balance__c", v)} />
+              <NumInput label="L Fund" value={currentState.TSP_Roth_L_Balance__c} onChange={(v) => update("TSP_Roth_L_Balance__c", v)} />
             </Group>
 
             <Group title="Social Security & FEHB">
@@ -498,15 +526,29 @@ function PlanColumn(props: {
           <Row label="SS at start age (computed)" value={fmt$(result.socialSecurity.monthlyBenefitAtStartAge, false)} />
           <Row label="SS Full Retirement Age" value={String(result.socialSecurity.fullRetirementAge)} />
 
-          <SectionLabel>TSP</SectionLabel>
+          <SectionLabel>TSP — TRADITIONAL</SectionLabel>
           <EditableRow label="G Fund balance" display={fmt$(state.TSP_Trad_G_Balance__c, false)} value={state.TSP_Trad_G_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Trad_G_Balance__c", Number(v))} />
           <EditableRow label="F Fund balance" display={fmt$(state.TSP_Trad_F_Balance__c, false)} value={state.TSP_Trad_F_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Trad_F_Balance__c", Number(v))} />
           <EditableRow label="C Fund balance" display={fmt$(state.TSP_Trad_C_Balance__c, false)} value={state.TSP_Trad_C_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Trad_C_Balance__c", Number(v))} />
           <EditableRow label="S Fund balance" display={fmt$(state.TSP_Trad_S_Balance__c, false)} value={state.TSP_Trad_S_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Trad_S_Balance__c", Number(v))} />
           <EditableRow label="I Fund balance" display={fmt$(state.TSP_Trad_I_Balance__c, false)} value={state.TSP_Trad_I_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Trad_I_Balance__c", Number(v))} />
           <EditableRow label="L Fund balance" display={fmt$(state.TSP_Trad_L_Balance__c, false)} value={state.TSP_Trad_L_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Trad_L_Balance__c", Number(v))} />
+          <Row label="Traditional total today" value={fmt$(state.TSP_Trad_G_Balance__c + state.TSP_Trad_F_Balance__c + state.TSP_Trad_C_Balance__c + state.TSP_Trad_S_Balance__c + state.TSP_Trad_I_Balance__c + state.TSP_Trad_L_Balance__c, false)} />
+
+          <SectionLabel>TSP — ROTH</SectionLabel>
+          <EditableRow label="G Fund balance" display={fmt$(state.TSP_Roth_G_Balance__c, false)} value={state.TSP_Roth_G_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Roth_G_Balance__c", Number(v))} />
+          <EditableRow label="F Fund balance" display={fmt$(state.TSP_Roth_F_Balance__c, false)} value={state.TSP_Roth_F_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Roth_F_Balance__c", Number(v))} />
+          <EditableRow label="C Fund balance" display={fmt$(state.TSP_Roth_C_Balance__c, false)} value={state.TSP_Roth_C_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Roth_C_Balance__c", Number(v))} />
+          <EditableRow label="S Fund balance" display={fmt$(state.TSP_Roth_S_Balance__c, false)} value={state.TSP_Roth_S_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Roth_S_Balance__c", Number(v))} />
+          <EditableRow label="I Fund balance" display={fmt$(state.TSP_Roth_I_Balance__c, false)} value={state.TSP_Roth_I_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Roth_I_Balance__c", Number(v))} />
+          <EditableRow label="L Fund balance" display={fmt$(state.TSP_Roth_L_Balance__c, false)} value={state.TSP_Roth_L_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Roth_L_Balance__c", Number(v))} />
+          <Row label="Roth total today" value={fmt$(state.TSP_Roth_G_Balance__c + state.TSP_Roth_F_Balance__c + state.TSP_Roth_C_Balance__c + state.TSP_Roth_S_Balance__c + state.TSP_Roth_I_Balance__c + state.TSP_Roth_L_Balance__c, false)} />
+
+          <SectionLabel>TSP — AT RETIREMENT</SectionLabel>
           <EditableRow label="Withdrawal Age" display={String(state.TSP_Withdrawal_Age_Years__c)} value={state.TSP_Withdrawal_Age_Years__c} step={1} onCommit={(v) => onUpdate("TSP_Withdrawal_Age_Years__c", Number(v))} />
-          <Row label="Total at retirement (computed)" value={fmt$(result.tsp.totalAtRetirement, false)} />
+          <Row label="Traditional at retirement" value={fmt$(result.tsp.traditionalAtRetirement, false)} />
+          <Row label="Roth at retirement" value={fmt$(result.tsp.rothAtRetirement, false)} />
+          <Row label="Total balance at retirement" value={fmt$(result.tsp.totalAtRetirement, false)} />
           <Row label="Monthly withdrawal" value={`${fmt$(result.tsp.monthlyWithdrawal, false)}/mo`} />
 
           <SectionLabel>FEGLI &amp; FEHB</SectionLabel>

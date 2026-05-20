@@ -43,7 +43,7 @@ async function loadIntake(intakeId: string) {
     }
   }
 
-  return { record, clientName, dateOfBirth, address };
+  return { record, clientName, dateOfBirth, address, contactId: (record.Contact__c as string) ?? null };
 }
 
 export default async function LivePlanPage({ params, searchParams }: PageProps) {
@@ -90,6 +90,7 @@ export default async function LivePlanPage({ params, searchParams }: PageProps) 
       clientName={data.clientName}
       dateOfBirth={data.dateOfBirth}
       address={data.address}
+      contactId={data.contactId}
     />
   );
 }
