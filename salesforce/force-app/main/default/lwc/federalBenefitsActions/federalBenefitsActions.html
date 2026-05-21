@@ -196,7 +196,7 @@
                             </lightning-button>
                         </template>
                         <template lwc:if={showAccountGenerateReport}>
-                            <lightning-button label="Generate Federal Benefits Gap Analysis" variant="neutral"
+                            <lightning-button label="Generate Federal Benefit Comparison" variant="neutral"
                                 icon-name="utility:file" onclick={handleGenerateReport} disabled={isLoading}>
                             </lightning-button>
                         </template>
@@ -365,7 +365,7 @@
         <!-- FBI: Generate Report -->
         <template lwc:if={showGenerateReport}>
             <div class="slds-p-horizontal_medium slds-m-bottom_medium">
-                <lightning-button label="Generate Federal Benefits Gap Analysis" variant="brand"
+                <lightning-button label="Generate Federal Benefit Comparison" variant="brand"
                     icon-name="utility:file" onclick={handleGenerateReport} disabled={isLoading}>
                 </lightning-button>
             </div>
@@ -376,7 +376,7 @@
             <div class="slds-box slds-m-horizontal_medium slds-m-bottom_medium" style="background:#f0faf4;border:1px solid #2e844a;">
                 <div class="slds-grid slds-grid_vertical-align-center">
                     <lightning-icon icon-name="utility:check" size="small" class="slds-m-right_small" style="color:#2e844a;"></lightning-icon>
-                    <span class="slds-text-body_regular" style="color:#2e844a;font-weight:bold;">Federal Benefits Gap Analysis Generated</span>
+                    <span class="slds-text-body_regular" style="color:#2e844a;font-weight:bold;">Federal Benefit Comparison Generated</span>
                 </div>
                 <p class="slds-text-body_small slds-m-top_xx-small slds-text-color_weak">
                     The PDF report is attached to this record under Files. Refresh the page to see it in the documents list above.

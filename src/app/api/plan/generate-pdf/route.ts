@@ -6,7 +6,7 @@ import { getSFConnection } from "@/lib/salesforce/connector";
  * POST /api/plan/generate-pdf
  *
  * Triggers the same /api/salesforce/generate + /api/report/pdf pipeline the
- * SF "Generate Federal Benefits Gap Analysis" button uses, then attaches the
+ * SF "Generate Federal Benefit Comparison" button uses, then attaches the
  * PDF to the SF record. Auth = Live Plan token.
  *
  * Implementation note: instead of duplicating the entire calc + PDF pipeline
@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
 
   // Step 3 — upload to SF + multi-link
   const employeeName = calc.employeeName ?? "Federal Employee";
-  const fileName = `${employeeName} - Federal Benefits Gap Analysis`;
+  const fileName = `${employeeName} - Federal Benefit Comparison`;
 
   const conn = await getSFConnection();
 
@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
     Title: fileName,
     PathOnClient: fileName + ".pdf",
     VersionData: pdfBuffer.toString("base64"),
-    Description: `Federal Benefits Gap Analysis — Live Plan locked at ${new Date().toISOString()}`,
+    Description: `Federal Benefit Comparison — Live Plan locked at ${new Date().toISOString()}`,
     FirstPublishLocationId: intakeId,
   });
   if (!cv.success) {

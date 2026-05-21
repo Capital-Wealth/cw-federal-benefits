@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Live Plan v1.0 — Federal Benefits Gap Analysis (dynamic web app).
+ * Live Plan v1.0 — Federal Benefit Comparison (dynamic web app).
  *
  * v1.0 upgrades:
  *   - Full 14-module calc engine (FERS Supplement, SS, TSP growth, FEGLI,
@@ -13,7 +13,7 @@
  * Auth still HMAC token (advisor-only); SSO swap lands separately.
  */
 
-import { useMemo, useState } from "react";
+import { createContext, useContext, useMemo, useState } from "react";
 import type { LivePlanSession } from "@/lib/plan/token";
 import { calculateReport } from "@/lib/calculations";
 import { buildReportInput, type PlanState } from "@/lib/plan/buildReportInput";
@@ -21,6 +21,52 @@ import { ColaChart, TspChart, NetCashflowChart } from "./PlanCharts";
 
 const FONT_DISPLAY = "'Cormorant Garamond', Georgia, serif";
 const FONT_BODY = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
+
+const HIGHLIGHT_BG = "#FFF3C4"; // warm highlighter yellow for light rows
+const HIGHLIGHT_RING = "#E6B800"; // gold ring for dark/contained elements
+
+// ============================================================
+// Presentation highlighting
+// ------------------------------------------------------------
+// When the advisor turns on "Highlight" mode in the header, clicking any row,
+// value, tile, or the hero number marks it gold for the client and click again
+// clears it. Highlights live only in React state (screen-only, per meeting);
+// they are not persisted and do not bake into the generated PDF. Highlight mode
+// also suppresses inline editing so numbers can't be changed mid-meeting.
+// ============================================================
+
+interface HighlightApi {
+  mode: boolean;
+  has: (id: string) => boolean;
+  toggle: (id: string) => void;
+}
+
+const HighlightCtx = createContext<HighlightApi>({
+  mode: false,
+  has: () => false,
+  toggle: () => {},
+});
+
+function useHighlight() {
+  return useContext(HighlightCtx);
+}
+
+/**
+ * Namespaces highlight ids by a column prefix (e.g. "Plan A") so the same row
+ * label in Plan A and Plan B highlight independently.
+ */
+function ColumnHighlight({ prefix, children }: { prefix: string; children: React.ReactNode }) {
+  const parent = useHighlight();
+  const value = useMemo<HighlightApi>(
+    () => ({
+      mode: parent.mode,
+      has: (id) => parent.has(`${prefix}::${id}`),
+      toggle: (id) => parent.toggle(`${prefix}::${id}`),
+    }),
+    [parent, prefix],
+  );
+  return <HighlightCtx.Provider value={value}>{children}</HighlightCtx.Provider>;
+}
 
 interface Props {
   session: LivePlanSession;
@@ -124,6 +170,24 @@ export default function LivePlanClient({
   const [generating, setGenerating] = useState(false);
   const [message, setMessage] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
+  // Presentation highlighting (screen-only, per meeting).
+  const [highlightMode, setHighlightMode] = useState(false);
+  const [highlights, setHighlights] = useState<Set<string>>(() => new Set());
+  const highlightApi = useMemo<HighlightApi>(
+    () => ({
+      mode: highlightMode,
+      has: (id) => highlights.has(id),
+      toggle: (id) =>
+        setHighlights((prev) => {
+          const next = new Set(prev);
+          if (next.has(id)) next.delete(id);
+          else next.add(id);
+          return next;
+        }),
+    }),
+    [highlightMode, highlights],
+  );
+
   const currentState = active === "A" ? planA : planB ?? initial;
   const setCurrent = active === "A" ? setPlanA : setPlanB;
 
@@ -226,23 +290,60 @@ export default function LivePlanClient({
 
   const currentResult = active === "A" ? resultA : resultB;
 
+  const highlightCount = highlights.size;
+
   return (
+   <HighlightCtx.Provider value={highlightApi}>
     <div style={{ minHeight: "100vh", background: "#f0f4fa", fontFamily: FONT_BODY, color: "#0F1A2A" }}>
       <header style={{ background: "#16253C", color: "#fff", padding: "16px 32px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "3px solid #C7A356" }}>
         <div>
           <div style={{ fontFamily: FONT_DISPLAY, fontSize: 22, color: "#C7A356", letterSpacing: 2 }}>CAPITAL WEALTH</div>
-          <div style={{ fontSize: 11, color: "#cad4e2", letterSpacing: 3 }}>FEDERAL BENEFITS GAP ANALYSIS — LIVE PLAN v1.1</div>
+          <div style={{ fontSize: 11, color: "#cad4e2", letterSpacing: 3 }}>FEDERAL BENEFIT COMPARISON — LIVE PLAN v1.1</div>
         </div>
-        <div style={{ textAlign: "right", fontSize: 12, color: "#cad4e2" }}>
-          <div><strong style={{ color: "#fff" }}>{clientName ?? "—"}</strong></div>
-          <div>Edited by {session.userName}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              onClick={() => setHighlightMode((m) => !m)}
+              title="Toggle highlight mode for presenting"
+              style={{
+                padding: "8px 14px", borderRadius: 4, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                border: `1px solid ${highlightMode ? "#C7A356" : "#3a4a63"}`,
+                background: highlightMode ? "#C7A356" : "transparent",
+                color: highlightMode ? "#16253C" : "#cad4e2",
+              }}
+            >
+              {highlightMode ? "🖍 Highlighting" : "🖍 Highlight"}
+            </button>
+            {highlightCount > 0 && (
+              <button
+                onClick={() => setHighlights(new Set())}
+                title="Clear all highlights"
+                style={{
+                  padding: "8px 12px", borderRadius: 4, fontSize: 12, fontWeight: 600, cursor: "pointer",
+                  border: "1px solid #3a4a63", background: "transparent", color: "#cad4e2",
+                }}
+              >
+                Clear ({highlightCount})
+              </button>
+            )}
+          </div>
+          <div style={{ textAlign: "right", fontSize: 12, color: "#cad4e2" }}>
+            <div><strong style={{ color: "#fff" }}>{clientName ?? "—"}</strong></div>
+            <div>Edited by {session.userName}</div>
+          </div>
         </div>
       </header>
 
-      {/* Inline edit hint banner */}
-      <div style={{ background: "#fef9ee", borderBottom: "1px solid #C7A356", padding: "8px 32px", fontSize: 12, color: "#374151", textAlign: "center" }}>
-        <strong style={{ color: "#16253C" }}>✎ Inline edit is on.</strong> Click any value with a dashed gold underline to edit it directly — numbers update everywhere instantly.
-      </div>
+      {/* Mode hint banner — switches with highlight mode */}
+      {highlightMode ? (
+        <div style={{ background: "#16253C", borderBottom: "1px solid #C7A356", padding: "8px 32px", fontSize: 12, color: "#FDD25E", textAlign: "center" }}>
+          <strong>🖍 Highlight mode is on.</strong> Click any row, value, tile, or the headline number to highlight it for the client — click again to remove. Editing is locked while highlighting.
+        </div>
+      ) : (
+        <div style={{ background: "#fef9ee", borderBottom: "1px solid #C7A356", padding: "8px 32px", fontSize: 12, color: "#374151", textAlign: "center" }}>
+          <strong style={{ color: "#16253C" }}>✎ Inline edit is on.</strong> Click any value with a dashed gold underline to edit it directly — numbers update everywhere instantly.
+        </div>
+      )}
 
       {/* Scenario tabs */}
       <div style={{ background: "#fff", padding: "10px 32px", borderBottom: "1px solid #E5E7EB", display: "flex", alignItems: "center", gap: 8 }}>
@@ -362,6 +463,7 @@ export default function LivePlanClient({
         </aside>
       </div>
     </div>
+   </HighlightCtx.Provider>
   );
 }
 
@@ -431,6 +533,7 @@ function PlanColumn(props: {
       boxShadow: highlighted ? "0 0 0 2px #C7A356, 0 1px 3px rgba(0,0,0,0.06)" : "0 1px 3px rgba(0,0,0,0.06)",
       transition: "box-shadow 0.15s",
     }}>
+     <ColumnHighlight prefix={label}>
       {isComparison && (
         <div style={{ fontSize: 10, color: "#C7A356", letterSpacing: 3, fontWeight: 600, marginBottom: 4 }}>
           {label.toUpperCase()}
@@ -441,7 +544,7 @@ function PlanColumn(props: {
       <div style={{ width: 50, height: 2, background: "#C7A356", marginBottom: 16 }} />
 
       {/* Hero */}
-      <div style={{ background: "#16253C", padding: "20px 24px", marginBottom: 14, borderRadius: 4 }}>
+      <Highlightable id="hero-annuity" style={{ background: "#16253C", padding: "20px 24px", marginBottom: 14, borderRadius: 4 }}>
         <div style={{ fontSize: 9, color: "#FDD25E", letterSpacing: 2.5, fontWeight: 600 }}>YOUR MONTHLY ANNUITY AT RETIREMENT</div>
         <div style={{ fontSize: 36, fontFamily: FONT_DISPLAY, color: "#C7A356", lineHeight: 1.05, marginTop: 6 }}>
           {fmt$(result.annuity.monthlyAnnuity, false)}<span style={{ fontSize: 16 }}>/mo</span>
@@ -449,7 +552,7 @@ function PlanColumn(props: {
         <div style={{ fontSize: 11, color: "#cad4e2", marginTop: 6 }}>
           {fmt$(result.annuity.annualAnnuity, false)}/yr · {state.COLA_Adjustment__c}% COLA · begins {fmtDate(state.Desired_Retirement_Date__c)}
         </div>
-      </div>
+      </Highlightable>
 
       {/* Tiles */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
@@ -527,21 +630,21 @@ function PlanColumn(props: {
           <Row label="SS Full Retirement Age" value={String(result.socialSecurity.fullRetirementAge)} />
 
           <SectionLabel>TSP — TRADITIONAL</SectionLabel>
-          <EditableRow label="G Fund balance" display={fmt$(state.TSP_Trad_G_Balance__c, false)} value={state.TSP_Trad_G_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Trad_G_Balance__c", Number(v))} />
-          <EditableRow label="F Fund balance" display={fmt$(state.TSP_Trad_F_Balance__c, false)} value={state.TSP_Trad_F_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Trad_F_Balance__c", Number(v))} />
-          <EditableRow label="C Fund balance" display={fmt$(state.TSP_Trad_C_Balance__c, false)} value={state.TSP_Trad_C_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Trad_C_Balance__c", Number(v))} />
-          <EditableRow label="S Fund balance" display={fmt$(state.TSP_Trad_S_Balance__c, false)} value={state.TSP_Trad_S_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Trad_S_Balance__c", Number(v))} />
-          <EditableRow label="I Fund balance" display={fmt$(state.TSP_Trad_I_Balance__c, false)} value={state.TSP_Trad_I_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Trad_I_Balance__c", Number(v))} />
-          <EditableRow label="L Fund balance" display={fmt$(state.TSP_Trad_L_Balance__c, false)} value={state.TSP_Trad_L_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Trad_L_Balance__c", Number(v))} />
+          <EditableRow hid="trad-G" label="G Fund balance" display={fmt$(state.TSP_Trad_G_Balance__c, false)} value={state.TSP_Trad_G_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Trad_G_Balance__c", Number(v))} />
+          <EditableRow hid="trad-F" label="F Fund balance" display={fmt$(state.TSP_Trad_F_Balance__c, false)} value={state.TSP_Trad_F_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Trad_F_Balance__c", Number(v))} />
+          <EditableRow hid="trad-C" label="C Fund balance" display={fmt$(state.TSP_Trad_C_Balance__c, false)} value={state.TSP_Trad_C_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Trad_C_Balance__c", Number(v))} />
+          <EditableRow hid="trad-S" label="S Fund balance" display={fmt$(state.TSP_Trad_S_Balance__c, false)} value={state.TSP_Trad_S_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Trad_S_Balance__c", Number(v))} />
+          <EditableRow hid="trad-I" label="I Fund balance" display={fmt$(state.TSP_Trad_I_Balance__c, false)} value={state.TSP_Trad_I_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Trad_I_Balance__c", Number(v))} />
+          <EditableRow hid="trad-L" label="L Fund balance" display={fmt$(state.TSP_Trad_L_Balance__c, false)} value={state.TSP_Trad_L_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Trad_L_Balance__c", Number(v))} />
           <Row label="Traditional total today" value={fmt$(state.TSP_Trad_G_Balance__c + state.TSP_Trad_F_Balance__c + state.TSP_Trad_C_Balance__c + state.TSP_Trad_S_Balance__c + state.TSP_Trad_I_Balance__c + state.TSP_Trad_L_Balance__c, false)} />
 
           <SectionLabel>TSP — ROTH</SectionLabel>
-          <EditableRow label="G Fund balance" display={fmt$(state.TSP_Roth_G_Balance__c, false)} value={state.TSP_Roth_G_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Roth_G_Balance__c", Number(v))} />
-          <EditableRow label="F Fund balance" display={fmt$(state.TSP_Roth_F_Balance__c, false)} value={state.TSP_Roth_F_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Roth_F_Balance__c", Number(v))} />
-          <EditableRow label="C Fund balance" display={fmt$(state.TSP_Roth_C_Balance__c, false)} value={state.TSP_Roth_C_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Roth_C_Balance__c", Number(v))} />
-          <EditableRow label="S Fund balance" display={fmt$(state.TSP_Roth_S_Balance__c, false)} value={state.TSP_Roth_S_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Roth_S_Balance__c", Number(v))} />
-          <EditableRow label="I Fund balance" display={fmt$(state.TSP_Roth_I_Balance__c, false)} value={state.TSP_Roth_I_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Roth_I_Balance__c", Number(v))} />
-          <EditableRow label="L Fund balance" display={fmt$(state.TSP_Roth_L_Balance__c, false)} value={state.TSP_Roth_L_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Roth_L_Balance__c", Number(v))} />
+          <EditableRow hid="roth-G" label="G Fund balance" display={fmt$(state.TSP_Roth_G_Balance__c, false)} value={state.TSP_Roth_G_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Roth_G_Balance__c", Number(v))} />
+          <EditableRow hid="roth-F" label="F Fund balance" display={fmt$(state.TSP_Roth_F_Balance__c, false)} value={state.TSP_Roth_F_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Roth_F_Balance__c", Number(v))} />
+          <EditableRow hid="roth-C" label="C Fund balance" display={fmt$(state.TSP_Roth_C_Balance__c, false)} value={state.TSP_Roth_C_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Roth_C_Balance__c", Number(v))} />
+          <EditableRow hid="roth-S" label="S Fund balance" display={fmt$(state.TSP_Roth_S_Balance__c, false)} value={state.TSP_Roth_S_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Roth_S_Balance__c", Number(v))} />
+          <EditableRow hid="roth-I" label="I Fund balance" display={fmt$(state.TSP_Roth_I_Balance__c, false)} value={state.TSP_Roth_I_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Roth_I_Balance__c", Number(v))} />
+          <EditableRow hid="roth-L" label="L Fund balance" display={fmt$(state.TSP_Roth_L_Balance__c, false)} value={state.TSP_Roth_L_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Roth_L_Balance__c", Number(v))} />
           <Row label="Roth total today" value={fmt$(state.TSP_Roth_G_Balance__c + state.TSP_Roth_F_Balance__c + state.TSP_Roth_C_Balance__c + state.TSP_Roth_S_Balance__c + state.TSP_Roth_I_Balance__c + state.TSP_Roth_L_Balance__c, false)} />
 
           <SectionLabel>TSP — AT RETIREMENT</SectionLabel>
@@ -636,6 +739,7 @@ function PlanColumn(props: {
           </div>
         </div>
       )}
+     </ColumnHighlight>
     </main>
   );
 }
@@ -698,10 +802,44 @@ function goldBtn(active: boolean): React.CSSProperties {
 }
 
 function Tile({ label, value }: { label: string; value: string }) {
+  const hl = useHighlight();
+  const on = hl.has(`tile:${label}`);
   return (
-    <div style={{ background: "#fafbfc", borderLeft: "3px solid #C7A356", padding: "10px 12px" }}>
+    <div
+      onClick={hl.mode ? () => hl.toggle(`tile:${label}`) : undefined}
+      style={{
+        background: on ? HIGHLIGHT_BG : "#fafbfc",
+        borderLeft: "3px solid #C7A356",
+        padding: "10px 12px",
+        cursor: hl.mode ? "pointer" : undefined,
+        boxShadow: on ? `inset 0 0 0 1px ${HIGHLIGHT_RING}` : undefined,
+      }}
+    >
       <div style={{ fontSize: 9, color: "#6B7280", letterSpacing: 1.5, fontWeight: 600, textTransform: "uppercase" }}>{label}</div>
       <div style={{ fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600, color: "#16253C", marginTop: 2 }}>{value}</div>
+    </div>
+  );
+}
+
+/**
+ * Generic highlight wrapper for contained blocks (hero, charts). Adds a gold
+ * ring when highlighted; toggles on click while in highlight mode.
+ */
+function Highlightable({ id, children, style }: { id: string; children: React.ReactNode; style?: React.CSSProperties }) {
+  const hl = useHighlight();
+  const on = hl.has(id);
+  return (
+    <div
+      onClick={hl.mode ? (e) => { e.stopPropagation(); hl.toggle(id); } : undefined}
+      style={{
+        ...style,
+        cursor: hl.mode ? "pointer" : style?.cursor,
+        outline: on ? `3px solid ${HIGHLIGHT_RING}` : undefined,
+        outlineOffset: on ? 2 : undefined,
+        borderRadius: style?.borderRadius ?? (on ? 4 : undefined),
+      }}
+    >
+      {children}
     </div>
   );
 }
@@ -730,6 +868,7 @@ function EditableRow({
   type = "number",
   step = 1,
   options,
+  hid,
   onCommit,
 }: {
   label: string;
@@ -738,8 +877,12 @@ function EditableRow({
   type?: "number" | "text" | "date" | "select";
   step?: number;
   options?: { label: string; value: string }[];
+  hid?: string;
   onCommit: (v: number | string) => void;
 }) {
+  const hl = useHighlight();
+  const id = hid ?? label;
+  const on = hl.has(id);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<string>(String(value));
   const [hover, setHover] = useState(false);
@@ -756,18 +899,23 @@ function EditableRow({
 
   return (
     <div
+      onClick={hl.mode ? () => hl.toggle(id) : undefined}
       style={{
         display: "flex",
         justifyContent: "space-between",
-        padding: "5px 0",
+        padding: "5px 8px",
+        margin: "0 -8px",
         borderBottom: "0.5px solid #eef0f3",
         fontSize: 13,
+        background: on ? HIGHLIGHT_BG : undefined,
+        borderRadius: on ? 3 : undefined,
+        cursor: hl.mode ? "pointer" : undefined,
       }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
       <span style={{ color: "#374151" }}>{label}</span>
-      {editing ? (
+      {editing && !hl.mode ? (
         type === "select" ? (
           <select
             autoFocus
@@ -795,19 +943,19 @@ function EditableRow({
         )
       ) : (
         <span
-          onClick={() => { setDraft(String(value)); setEditing(true); }}
-          title="Click to edit"
+          onClick={hl.mode ? undefined : () => { setDraft(String(value)); setEditing(true); }}
+          title={hl.mode ? "Click to highlight" : "Click to edit"}
           style={{
             color: "#16253C",
             fontWeight: 600,
             cursor: "pointer",
-            borderBottom: hover ? "1px dashed #C7A356" : "1px dashed transparent",
+            borderBottom: !hl.mode && hover ? "1px dashed #C7A356" : "1px dashed transparent",
             paddingBottom: 1,
             transition: "border-color 0.1s",
           }}
         >
           {display}
-          {hover && <span style={{ marginLeft: 6, fontSize: 10, color: "#C7A356", opacity: 0.7 }}>✎</span>}
+          {!hl.mode && hover && <span style={{ marginLeft: 6, fontSize: 10, color: "#C7A356", opacity: 0.7 }}>✎</span>}
         </span>
       )}
     </div>
@@ -827,9 +975,22 @@ const inlineInputStyle: React.CSSProperties = {
   minWidth: 110,
 };
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value, hid }: { label: string; value: string; hid?: string }) {
+  const hl = useHighlight();
+  const id = hid ?? label;
+  const on = hl.has(id);
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: "0.5px solid #eef0f3", fontSize: 12 }}>
+    <div
+      onClick={hl.mode ? () => hl.toggle(id) : undefined}
+      style={{
+        display: "flex", justifyContent: "space-between",
+        padding: "4px 8px", margin: "0 -8px",
+        borderBottom: "0.5px solid #eef0f3", fontSize: 12,
+        background: on ? HIGHLIGHT_BG : undefined,
+        borderRadius: on ? 3 : undefined,
+        cursor: hl.mode ? "pointer" : undefined,
+      }}
+    >
       <span style={{ color: "#374151" }}>{label}</span>
       <span style={{ color: "#16253C", fontWeight: 600 }}>{value}</span>
     </div>

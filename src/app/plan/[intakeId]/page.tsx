@@ -1,5 +1,5 @@
 /**
- * Live Plan — Federal Benefits Gap Analysis (dynamic web app).
+ * Live Plan — Federal Benefit Comparison (dynamic web app).
  *
  * Auth: short-lived HMAC token minted by Apex, passed as ?session=…
  * Auth model is intentionally simple for v0.5 — full SF SSO via Connected App

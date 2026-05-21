@@ -289,7 +289,7 @@ export default class FederalBenefitsActions extends LightningElement {
                     ? ` ${assumptions.length} assumption(s) applied: ${assumptions.join(' • ')}`
                     : '';
                 this.dispatchEvent(new ShowToastEvent({
-                    title: 'Federal Benefits Gap Analysis Generated',
+                    title: 'Federal Benefit Comparison Generated',
                     message: baseMsg + assumptionMsg,
                     variant: 'success',
                     mode: assumptions.length ? 'sticky' : 'dismissible'
