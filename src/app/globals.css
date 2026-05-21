@@ -24,3 +24,16 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* ---- Event check-in app (kiosk/mobile) ---- */
+.lc-events, .lc-events * { touch-action: manipulation; }
+.lc-events { overscroll-behavior: contain; }
+.lc-events button:focus-visible,
+.lc-events a:focus-visible,
+.lc-events input:focus-visible {
+  outline: 3px solid #C7A356;
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lc-events * { transition: none !important; }
+}
