@@ -5,6 +5,8 @@
 **Subject:** 5 sign-offs to harden CW before PreciseFP becomes our problem
 **Three Kings audit:** Voss accusation audit (line 1) + label + reframe insight; Belfort straight line raising all Three Tens; Miller — Mike is hero, Josh is guide, named villain = PreciseFP holds the data so Docupace's lawyers own the breach response; WizGat on every gate; no "I"; one CTA; CW signature discipline.
 
+**STATUS: SENT 2026-05-20** — message id `19e46eba11d9fee1`, thread `19e3bdd4a60fd144`, to mstevens@capitalwealth.com from jcohen@capitalwealth.com. Awaiting Mike's reply / Friday 1:00 PM walk-through.
+
 ---
 
 ## DRAFT

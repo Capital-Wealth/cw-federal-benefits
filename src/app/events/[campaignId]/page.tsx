@@ -42,6 +42,16 @@ export default function RosterPage({ params }: { params: Promise<{ campaignId: s
     setBusy((b) => ({ ...b, [l.Id]: false }));
   }
 
+  async function startIntake(l: Lead) {
+    setBusy((b) => ({ ...b, [l.Id + "_i"]: true }));
+    const res = await fetch("/api/events/start-intake", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ leadId: l.Id }) }).then((r) => r.json());
+    setBusy((b) => ({ ...b, [l.Id + "_i"]: false }));
+    if (res.success) window.open(res.url, "_blank");
+    else alert("Error: " + (res.error || "failed"));
+  }
+
   async function addWalkin() {
     if (!w.last.trim()) { alert("Last name required"); return; }
     const res = await fetch("/api/events/walkin", { method: "POST",
@@ -76,18 +86,29 @@ export default function RosterPage({ params }: { params: Promise<{ campaignId: s
           {filtered.map((l) => {
             const on = !!l.Workshop_Attended__c;
             return (
-              <button key={l.Id} onClick={() => toggle(l)} disabled={busy[l.Id]}
-                style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%",
+              <div key={l.Id}
+                style={{ display: "flex", alignItems: "stretch", width: "100%",
                   background: on ? GREEN : "#fff", color: on ? "#fff" : NAVY,
                   border: `2px solid ${on ? GREEN : "#e3ddd0"}`, borderRadius: 14,
-                  padding: "20px 22px", fontSize: 18, cursor: "pointer", textAlign: "left",
-                  minHeight: 76, opacity: busy[l.Id] ? 0.6 : 1, transition: "background .15s" }}>
-                <span style={{ minWidth: 0 }}>
-                  <strong style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.Name}</strong>
-                  {l.Phone && <span style={{ fontSize: 13, opacity: 0.8 }}>{l.Phone}</span>}
-                </span>
-                <span style={{ fontSize: 16, fontWeight: 700, whiteSpace: "nowrap", marginLeft: 12 }}>{on ? "✓ IN" : "Check in"}</span>
-              </button>
+                  overflow: "hidden", minHeight: 76, opacity: busy[l.Id] ? 0.6 : 1 }}>
+                <button onClick={() => toggle(l)} disabled={busy[l.Id]}
+                  style={{ flex: 1, display: "flex", justifyContent: "space-between", alignItems: "center",
+                    background: "transparent", color: "inherit", border: "none", cursor: "pointer",
+                    textAlign: "left", padding: "18px 18px", fontSize: 18, minWidth: 0 }}>
+                  <span style={{ minWidth: 0 }}>
+                    <strong style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.Name}</strong>
+                    {l.Phone && <span style={{ fontSize: 13, opacity: 0.8 }}>{l.Phone}</span>}
+                  </span>
+                  <span style={{ fontSize: 15, fontWeight: 700, whiteSpace: "nowrap", marginLeft: 10 }}>{on ? "✓ IN" : "Check in"}</span>
+                </button>
+                <button onClick={() => startIntake(l)} disabled={busy[l.Id + "_i"]}
+                  title="Open intake form"
+                  style={{ width: 64, flexShrink: 0, background: on ? "rgba(255,255,255,.15)" : "#F7F4ED",
+                    color: on ? "#fff" : NAVY, border: "none", borderLeft: `1px solid ${on ? "rgba(255,255,255,.3)" : "#e3ddd0"}`,
+                    cursor: "pointer", fontSize: 22 }}>
+                  {busy[l.Id + "_i"] ? "…" : "📋"}
+                </button>
+              </div>
             );
           })}
         </div>

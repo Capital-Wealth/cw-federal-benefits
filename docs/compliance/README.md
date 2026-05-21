@@ -22,7 +22,7 @@
 | NY footprint | `08-ny-footprint/NY_FOOTPRINT_DETERMINATION.md` | **Data pulled: 11 NY Accounts + 17 NY Leads** | Mike answers 3 yes/no questions |
 | Cyber insurance | `09-cyber-insurance/CYBER_INSURANCE_RFP.md` | RFP + pre-filled application drafted | Mike picks broker; 3-6 wk underwriting |
 | S3 Object Lock 7yr | `10-object-lock/OBJECT_LOCK_SIGN_OFF.md` | Drafted | Mike + counsel signatures (permanent decision) |
-| Mike consolidated ask | `11-mike-sign-off/MIKE_VAULT_SIGN_OFFS.md` | **Email drafted + queued in jcohen Gmail (draft id `r1220460608206972833`)** | Josh reviews + sends |
+| Mike consolidated ask | `11-mike-sign-off/MIKE_VAULT_SIGN_OFFS.md` | **SENT 2026-05-20 (msg id `19e46eba11d9fee1`)** to mstevens@capitalwealth.com | Mike's reply / Friday review |
 
 ---
 
