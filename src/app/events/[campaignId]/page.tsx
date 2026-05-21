@@ -27,6 +27,7 @@ export default function RosterPage({ params }: { params: Promise<{ campaignId: s
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [showWalkin, setShowWalkin] = useState(false);
   const [w, setW] = useState({ first: "", last: "", phone: "", email: "" });
+  const [submitting, setSubmitting] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true); setErr("");
@@ -68,12 +69,16 @@ export default function RosterPage({ params }: { params: Promise<{ campaignId: s
   }
 
   async function addWalkin() {
+    if (submitting) return;
     if (!w.last.trim()) { alert("Last name required"); return; }
-    const res = await fetch("/api/events/walkin", { method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ campaignId, firstName: w.first, lastName: w.last, phone: w.phone, email: w.email }) }).then((r) => r.json());
-    if (res.success) { setShowWalkin(false); setW({ first: "", last: "", phone: "", email: "" }); load(); }
-    else alert("Error: " + (res.error || "failed"));
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/events/walkin", { method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaignId, firstName: w.first, lastName: w.last, phone: w.phone, email: w.email }) }).then((r) => r.json());
+      if (res.success) { setShowWalkin(false); setW({ first: "", last: "", phone: "", email: "" }); load(); }
+      else alert("Error: " + (res.error || "failed"));
+    } finally { setSubmitting(false); }
   }
 
   const filtered = leads.filter((l) =>
@@ -91,7 +96,7 @@ export default function RosterPage({ params }: { params: Promise<{ campaignId: s
         <div style={{ maxWidth: 1100, margin: "0 auto" }}>
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or phone…"
             aria-label="Search attendees by name or phone" autoComplete="off" type="search"
-            style={{ width: "100%", marginTop: 12, padding: "16px 18px", fontSize: 18, borderRadius: 12, border: "none", boxSizing: "border-box", color: NAVY }} />
+            style={{ width: "100%", marginTop: 12, padding: "16px 18px", fontSize: 18, borderRadius: 12, border: "none", boxSizing: "border-box", color: NAVY, background: "#fff" }} />
         </div>
       </header>
       <main style={{ maxWidth: 1100, margin: "0 auto", padding: "16px 16px 96px" }}>
@@ -143,9 +148,9 @@ export default function RosterPage({ params }: { params: Promise<{ campaignId: s
         )}
       </main>
       <button onClick={() => setShowWalkin(true)} aria-label="Add a walk-in attendee"
-        style={{ position: "fixed", bottom: 20, left: "50%", transform: "translateX(-50%)",
-          padding: "16px 28px", background: GOLD, color: NAVY, border: "none", borderRadius: 999,
-          fontSize: 18, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,.25)", zIndex: 15 }}>
+        style={{ position: "fixed", bottom: 20, right: 20,
+          padding: "16px 24px", background: GOLD, color: NAVY, border: "none", borderRadius: 999,
+          fontSize: 17, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,.3)", zIndex: 15 }}>
         + Add walk-in
       </button>
       {showWalkin && (
@@ -165,7 +170,7 @@ export default function RosterPage({ params }: { params: Promise<{ campaignId: s
             ))}
             <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
               <button onClick={() => setShowWalkin(false)} style={{ flex: 1, padding: 16, background: "#eee", color: NAVY, border: "none", borderRadius: 10, fontSize: 16, cursor: "pointer" }}>Cancel</button>
-              <button onClick={addWalkin} style={{ flex: 1, padding: 16, background: GREEN, color: "#fff", border: "none", borderRadius: 10, fontSize: 16, fontWeight: 700, cursor: "pointer" }}>Add &amp; check in</button>
+              <button onClick={addWalkin} disabled={submitting} style={{ flex: 1, padding: 16, background: GREEN, color: "#fff", border: "none", borderRadius: 10, fontSize: 16, fontWeight: 700, cursor: submitting ? "default" : "pointer", opacity: submitting ? 0.6 : 1 }}>{submitting ? "Adding…" : "Add & check in"}</button>
             </div>
           </div>
         </div>

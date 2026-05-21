@@ -17,6 +17,17 @@ export async function POST(request: NextRequest) {
   const fullName = (fn ? fn + " " : "") + ln;
   try {
     const conn = await getSFConnection();
+    // Dedupe: if a lead with same phone OR same full name already on this campaign, reuse it
+    const dupeWhere = phone
+      ? `Phone = '${String(phone).replace(/'/g, "")}'`
+      : `FirstName = '${fn.replace(/'/g, "")}' AND LastName = '${ln.replace(/'/g, "")}'`;
+    const dupe = await conn.query<{ Id: string }>(
+      `SELECT Id FROM Lead WHERE Campaign__c = '${campaignId}' AND ${dupeWhere} LIMIT 1`
+    );
+    if (dupe.records.length) {
+      await conn.sobject("Lead").update({ Id: dupe.records[0].Id, Attendance__c: "Attended", Workshop_Attended__c: true });
+      return Response.json({ success: true, id: dupe.records[0].Id, name: fullName, deduped: true });
+    }
     const rec: Record<string, unknown> = {
       FirstName: fn || null,
       LastName: ln,
