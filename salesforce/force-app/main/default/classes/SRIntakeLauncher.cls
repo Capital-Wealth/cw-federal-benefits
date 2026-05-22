@@ -78,7 +78,7 @@ public with sharing class SRIntakeLauncher {
     private static void sendSurveyEmail(String toAddress, String firstName, String url) {
         Messaging.SingleEmailMessage msg = new Messaging.SingleEmailMessage();
         msg.setToAddresses(new List<String>{ toAddress });
-        msg.setSubject('A quick way to prep for your upcoming review');
+        msg.setSubject('Make your upcoming review about you');
         msg.setSaveAsActivity(false);
 
         // Send from the VIP org-wide address (Capital Wealth standard).
@@ -92,16 +92,15 @@ public with sharing class SRIntakeLauncher {
         String html =
             '<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#222;line-height:1.55;">'
           + '<p>' + hi + '</p>'
-          + '<p>Before we sit down for your Strategic Review, we want the time to be entirely about you. '
-          + 'If you have about five minutes, this short, optional survey lets your advisor walk in already '
-          + 'focused on what matters most to you &mdash; no surprises, and no time wasted on things you have already handled.</p>'
+          + '<p>Your Strategic Review is coming up &mdash; and the last thing you want is to spend it catching your advisor up on things you have already handled.</p>'
+          + '<p>A few minutes here changes that. Tell your advisor what is on your mind before you sit down, and your review starts already focused on what matters most to you: your goals, your concerns, whatever has changed.</p>'
           + '<p style="margin:26px 0;">'
           + '<a href="' + url + '" style="background:#0b3d2e;color:#ffffff;text-decoration:none;'
           + 'padding:13px 26px;border-radius:6px;font-weight:bold;display:inline-block;">Start the survey</a>'
           + '</p>'
-          + '<p>There are no wrong answers, and anything you would rather talk through in person, you can simply skip.</p>'
-          + '<p>We are looking forward to seeing you.</p>'
-          + '<p style="margin-top:22px;">Warmly,<br/>Capital Wealth</p>'
+          + '<p>It is short, and it is optional. Skip anything you would rather talk through in person.</p>'
+          + '<p>See you soon.</p>'
+          + '<p style="margin-top:22px;">&mdash; Your team at Capital Wealth</p>'
           + '<p style="font-size:12px;color:#888;margin-top:24px;">If the button does not work, copy and paste this link:<br/>' + url + '</p>'
           + '</div>';
         msg.setHtmlBody(html);
