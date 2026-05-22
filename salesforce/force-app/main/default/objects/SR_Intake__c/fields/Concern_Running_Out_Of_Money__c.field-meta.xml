@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Concern_Running_Out_Of_Money__c</fullName>
+    <label>Concern: Running Out of Money / Income</label>
+    <type>Checkbox</type>
+    <defaultValue>false</defaultValue>
+</CustomField>

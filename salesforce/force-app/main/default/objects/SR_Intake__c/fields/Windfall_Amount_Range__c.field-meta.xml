@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Windfall_Amount_Range__c</fullName>
+    <label>Windfall Amount Range</label>
+    <type>Picklist</type>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value><fullName>Under $100k</fullName><default>false</default><label>Under $100k</label></value>
+            <value><fullName>$100k - $499k</fullName><default>false</default><label>$100k - $499k</label></value>
+            <value><fullName>$500k - $999k</fullName><default>false</default><label>$500k - $999k</label></value>
+            <value><fullName>$1M+</fullName><default>false</default><label>$1M+</label></value>
+            <value><fullName>Unsure</fullName><default>false</default><label>Unsure</label></value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>

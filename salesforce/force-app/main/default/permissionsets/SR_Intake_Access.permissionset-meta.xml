@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <label>SR Intake Access</label>
+    <description>Access to the pre-Strategic-Review intake survey object, fields, and Apex services. Assign to advisors who run Strategic Reviews.</description>
+    <hasActivationRequired>false</hasActivationRequired>
+    <classAccesses><apexClass>SRIntakeService</apexClass><enabled>true</enabled></classAccesses>
+    <classAccesses><apexClass>SRIntakeLauncher</apexClass><enabled>true</enabled></classAccesses>
+    <objectPermissions>
+        <object>SR_Intake__c</object>
+        <allowCreate>true</allowCreate>
+        <allowRead>true</allowRead>
+        <allowEdit>true</allowEdit>
+        <allowDelete>false</allowDelete>
+        <viewAllRecords>false</viewAllRecords>
+        <modifyAllRecords>false</modifyAllRecords>
+    </objectPermissions>
+    <fieldPermissions><field>SR_Intake__c.Account__c</field><readable>true</readable><editable>true</editable></fieldPermissions>
+    <fieldPermissions><field>SR_Intake__c.Advisor__c</field><readable>true</readable><editable>true</editable></fieldPermissions>
+    <fieldPermissions><field>SR_Intake__c.Concern_Legacy__c</field><readable>true</readable><editable>true</editable></fieldPermissions>
+    <fieldPermissions><field>SR_Intake__c.Concern_Market_Volatility__c</field><readable>true</readable><editable>true</editable></fieldPermissions>
+    <fieldPermissions><field>SR_Intake__c.Concern_Not_Growing_Enough__c</field><readable>true</readable><editable>true</editable></fieldPermissions>
+    <fieldPermissions><field>SR_Intake__c.Concern_Running_Out_Of_Money__c</field><readable>true</readable><editable>true</editable></fieldPermissions>
+    <fieldPermissions><field>SR_Intake__c.Concern_Taxes__c</field><readable>true</readable><editable>true</editable></fieldPermissions>
+    <fieldPermissions><field>SR_Intake__c.Expecting_Windfall__c</field><readable>true</readable><editable>true</editable></fieldPermissions>
+    <fieldPermissions><field>SR_Intake__c.Has_Employer_Plan_To_Review__c</field><readable>true</readable><editable>true</editable></fieldPermissions>
+    <fieldPermissions><field>SR_Intake__c.Has_Held_Away_Accounts__c</field><readable>true</readable><editable>true</editable></fieldPermissions>
+    <fieldPermissions><field>SR_Intake__c.Held_Away_Notes__c</field><readable>true</readable><editable>true</editable></fieldPermissions>
+    <fieldPermissions><field>SR_Intake__c.Income_Plan_Confidence__c</field><readable>true</readable><editable>true</editable></fieldPermissions>
+    <fieldPermissions><field>SR_Intake__c.Life_Changes__c</field><readable>true</readable><editable>true</editable></fieldPermissions>
+    <fieldPermissions><field>SR_Intake__c.Retirement_Timing__c</field><readable>true</readable><editable>true</editable></fieldPermissions>
+    <fieldPermissions><field>SR_Intake__c.Status__c</field><readable>true</readable><editable>true</editable></fieldPermissions>
+    <fieldPermissions><field>SR_Intake__c.Strategic_Review_Meeting__c</field><readable>true</readable><editable>true</editable></fieldPermissions>
+    <fieldPermissions><field>SR_Intake__c.Submitted_Date__c</field><readable>true</readable><editable>true</editable></fieldPermissions>
+    <fieldPermissions><field>SR_Intake__c.Top_Concern__c</field><readable>true</readable><editable>true</editable></fieldPermissions>
+    <fieldPermissions><field>SR_Intake__c.Topics_To_Cover__c</field><readable>true</readable><editable>true</editable></fieldPermissions>
+    <fieldPermissions><field>SR_Intake__c.Windfall_Amount_Range__c</field><readable>true</readable><editable>true</editable></fieldPermissions>
+    <fieldPermissions><field>SR_Intake__c.Windfall_Notes__c</field><readable>true</readable><editable>true</editable></fieldPermissions>
+</PermissionSet>

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
+    <deploymentStatus>Deployed</deploymentStatus>
+    <description>Pre-Strategic-Review client intake survey. Sent to clients before an SR (Meeting Type "Strategic Review Meeting 1/2") to surface business opportunities (rollovers, windfalls, held-away accounts, income needs) and emotional drivers on the front hand. Built from Brent Thompson's 2026-05-21 SR process feedback.</description>
+    <enableActivities>true</enableActivities>
+    <enableHistory>true</enableHistory>
+    <enableReports>true</enableReports>
+    <enableSearch>true</enableSearch>
+    <label>SR Intake</label>
+    <pluralLabel>SR Intakes</pluralLabel>
+    <nameField>
+        <displayFormat>SRI-{00000}</displayFormat>
+        <label>SR Intake #</label>
+        <type>AutoNumber</type>
+    </nameField>
+    <sharingModel>ReadWrite</sharingModel>
+    <visibility>Public</visibility>
+</CustomObject>

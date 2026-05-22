@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Income_Plan_Confidence__c</fullName>
+    <label>Confidence in Retirement Income Plan</label>
+    <type>Picklist</type>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value><fullName>Very confident</fullName><default>false</default><label>Very confident</label></value>
+            <value><fullName>Somewhat confident</fullName><default>false</default><label>Somewhat confident</label></value>
+            <value><fullName>Not confident</fullName><default>false</default><label>Not confident</label></value>
+            <value><fullName>Unsure</fullName><default>false</default><label>Unsure</label></value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>
