@@ -40,12 +40,27 @@ export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: strin
     }
 
     const conn = await getSFConnection();
-    const opp = await conn.query<{ Name: string; Account: { Name?: string } | null; Stage_Date_Stamp_Case_Design__c: string | null }>(
-      `SELECT Name, Account.Name, Stage_Date_Stamp_Case_Design__c
-       FROM Opportunity WHERE Id = '${bundle.parent.Opportunity__c}' LIMIT 1`
-    );
-    const householdLabel = opp.records[0]?.Account?.Name || opp.records[0]?.Name || "Client";
-    const stageAlreadyStamped = opp.records[0]?.Stage_Date_Stamp_Case_Design__c;
+
+    let householdLabel = "Client";
+    let stageAlreadyStamped: string | null = null;
+
+    if (bundle.parent.Account__c) {
+      const acc = await conn.query<{ Name: string }>(
+        `SELECT Name FROM Account WHERE Id = '${bundle.parent.Account__c}' LIMIT 1`
+      );
+      if (acc.records[0]?.Name) householdLabel = acc.records[0].Name;
+    }
+
+    if (bundle.parent.Opportunity__c) {
+      const opp = await conn.query<{ Name: string; Account: { Name?: string } | null; Stage_Date_Stamp_Case_Design__c: string | null }>(
+        `SELECT Name, Account.Name, Stage_Date_Stamp_Case_Design__c
+         FROM Opportunity WHERE Id = '${bundle.parent.Opportunity__c}' LIMIT 1`
+      );
+      if (!bundle.parent.Account__c) {
+        householdLabel = opp.records[0]?.Account?.Name || opp.records[0]?.Name || householdLabel;
+      }
+      stageAlreadyStamped = opp.records[0]?.Stage_Date_Stamp_Case_Design__c ?? null;
+    }
 
     const pdfBuffer = await renderToBuffer(<CaseDesignPDF bundle={bundle} householdLabel={householdLabel} />);
     const fileName = `${householdLabel.replace(/[^A-Za-z0-9 &-]/g, "_")} ${bundle.parent.Document_Title__c || "Money Map"} ${new Date().toISOString().slice(0, 10)}`;
@@ -58,7 +73,7 @@ export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: strin
       PDF_ContentVersion_Id__c: upload.contentVersionId,
     });
 
-    if (!stageAlreadyStamped) {
+    if (bundle.parent.Opportunity__c && !stageAlreadyStamped) {
       try {
         await conn.sobject("Opportunity").update({
           Id: bundle.parent.Opportunity__c,

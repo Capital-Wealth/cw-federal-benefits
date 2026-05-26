@@ -86,50 +86,85 @@ export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: strin
     }
 
     const conn = await getSFConnection();
-    const parentOppRows = await conn.query<{
-      Id: string;
-      Name: string;
-      AccountId: string;
-      OwnerId: string;
-      LeadSource: string | null;
-      Account: { Name?: string; Household__c?: string } | null;
-      Stage_Date_Stamp_Case_Design__c: string | null;
-    }>(
-      `SELECT Id, Name, AccountId, OwnerId, LeadSource, Account.Name, Account.Household__c,
-              Stage_Date_Stamp_Case_Design__c
-       FROM Opportunity WHERE Id = '${bundle.parent.Opportunity__c}' LIMIT 1`
-    );
-    if (parentOppRows.records.length === 0) {
-      return Response.json({ error: "Parent Opportunity not found" }, { status: 404 });
+
+    // Resolve the Account context. Account-started Case Designs have Account__c
+    // set directly; legacy Opp-started ones fall back to the Opp's AccountId.
+    let accountId: string | null = bundle.parent.Account__c;
+    let ownerId: string | null = null;
+    let leadSource: string | null = null;
+    let householdLabel = "Client";
+    let stageAlreadyStamped: string | null = null;
+
+    if (accountId) {
+      const accRows = await conn.query<{ Name: string; OwnerId: string }>(
+        `SELECT Name, OwnerId FROM Account WHERE Id = '${accountId}' LIMIT 1`
+      );
+      if (accRows.records.length === 0) {
+        return Response.json({ error: "Account not found" }, { status: 404 });
+      }
+      householdLabel = accRows.records[0].Name;
+      ownerId = accRows.records[0].OwnerId;
     }
-    const parentOpp = parentOppRows.records[0];
-    const householdLabel = parentOpp.Account?.Name || parentOpp.Name || "Client";
+
+    if (bundle.parent.Opportunity__c) {
+      const oppRows = await conn.query<{
+        Id: string;
+        Name: string;
+        AccountId: string;
+        OwnerId: string;
+        LeadSource: string | null;
+        Account: { Name?: string; Household__c?: string } | null;
+        Stage_Date_Stamp_Case_Design__c: string | null;
+      }>(
+        `SELECT Id, Name, AccountId, OwnerId, LeadSource, Account.Name, Account.Household__c,
+                Stage_Date_Stamp_Case_Design__c
+         FROM Opportunity WHERE Id = '${bundle.parent.Opportunity__c}' LIMIT 1`
+      );
+      if (oppRows.records.length > 0) {
+        const parentOpp = oppRows.records[0];
+        if (!accountId) accountId = parentOpp.AccountId;
+        if (!ownerId) ownerId = parentOpp.OwnerId;
+        leadSource = parentOpp.LeadSource;
+        if (!bundle.parent.Account__c) {
+          householdLabel = parentOpp.Account?.Name || parentOpp.Name || householdLabel;
+        }
+        stageAlreadyStamped = parentOpp.Stage_Date_Stamp_Case_Design__c;
+      }
+    }
+
+    if (!accountId) {
+      return Response.json(
+        { error: "Case Design has no Account or Opportunity — cannot create child Opps." },
+        { status: 400 }
+      );
+    }
 
     const createdOpps: { destinationId: string; opportunityId: string; name: string }[] = [];
     const closeDate = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
     for (const d of destinations) {
-      const oppPayload = {
+      const oppPayload: Record<string, unknown> = {
         Name: opportunityNameFor(d),
-        AccountId: parentOpp.AccountId,
-        OwnerId: parentOpp.OwnerId,
+        AccountId: accountId,
         StageName: "Opportunity",
         CloseDate: closeDate,
         Amount: d.Amount__c ?? null,
-        LeadSource: parentOpp.LeadSource,
         RecordTypeId: recordTypeFor(d.Account_Type__c),
         Source_Case_Design__c: id,
       };
+      if (ownerId) oppPayload.OwnerId = ownerId;
+      if (leadSource) oppPayload.LeadSource = leadSource;
+
       const oppRes = await conn.sobject("Opportunity").create(oppPayload);
       if (!("success" in oppRes) || !oppRes.success) {
         throw new Error(
-          `Failed to create child Opportunity for destination ${d.Name}: ${JSON.stringify(oppRes)}`
+          `Failed to create Opportunity for destination ${d.Name}: ${JSON.stringify(oppRes)}`
         );
       }
       createdOpps.push({
         destinationId: d.Id,
         opportunityId: oppRes.id as string,
-        name: oppPayload.Name,
+        name: oppPayload.Name as string,
       });
     }
 
@@ -149,10 +184,10 @@ export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: strin
       PDF_ContentVersion_Id__c: upload.contentVersionId,
     });
 
-    if (!parentOpp.Stage_Date_Stamp_Case_Design__c) {
+    if (bundle.parent.Opportunity__c && !stageAlreadyStamped) {
       try {
         await conn.sobject("Opportunity").update({
-          Id: parentOpp.Id,
+          Id: bundle.parent.Opportunity__c,
           Stage_Date_Stamp_Case_Design__c: new Date().toISOString().slice(0, 10),
         });
       } catch {

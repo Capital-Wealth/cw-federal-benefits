@@ -30,7 +30,7 @@ function safeId(id: string): string {
 }
 
 const PARENT_FIELDS = [
-  "Id", "Name", "Opportunity__c", "Status__c", "Plan_Date__c", "Document_Title__c",
+  "Id", "Name", "Account__c", "Opportunity__c", "Status__c", "Plan_Date__c", "Document_Title__c",
   "Plan_Type__c", "Has_Roth_Conversion__c", "Notes__c",
   "PDF_ContentVersion_Id__c", "PDF_Vault_Document_Id__c",
   "Finalized_At__c", "Presented_At__c", "Locked_At__c",
@@ -198,19 +198,35 @@ export interface HouseholdDocument {
 export async function loadHouseholdDocs(caseDesignId: string): Promise<HouseholdDocument[]> {
   const conn = await getSFConnection();
 
-  const cd = await conn.query<{ Opportunity__c: string }>(
-    `SELECT Opportunity__c FROM Case_Design__c WHERE Id = '${safeId(caseDesignId)}' LIMIT 1`
+  const cd = await conn.query<{ Account__c: string | null; Opportunity__c: string | null }>(
+    `SELECT Account__c, Opportunity__c FROM Case_Design__c WHERE Id = '${safeId(caseDesignId)}' LIMIT 1`
   );
   if (cd.records.length === 0) return [];
-  const oppId = cd.records[0].Opportunity__c;
 
-  const opp = await conn.query<{ AccountId: string; Account: { Name?: string; Household__c?: string } | null }>(
-    `SELECT AccountId, Account.Name, Account.Household__c FROM Opportunity WHERE Id = '${safeId(oppId)}' LIMIT 1`
-  );
-  if (opp.records.length === 0) return [];
-  const accountId = opp.records[0].AccountId;
-  const householdId = opp.records[0].Account?.Household__c ?? null;
-  const accountName = opp.records[0].Account?.Name ?? "Account";
+  let accountId = cd.records[0].Account__c;
+  let householdId: string | null = null;
+  let accountName = "Account";
+
+  if (accountId) {
+    const acc = await conn.query<{ Name: string; Household__c: string | null }>(
+      `SELECT Name, Household__c FROM Account WHERE Id = '${safeId(accountId)}' LIMIT 1`
+    );
+    if (acc.records.length > 0) {
+      accountName = acc.records[0].Name;
+      householdId = acc.records[0].Household__c;
+    }
+  } else if (cd.records[0].Opportunity__c) {
+    const opp = await conn.query<{ AccountId: string; Account: { Name?: string; Household__c?: string } | null }>(
+      `SELECT AccountId, Account.Name, Account.Household__c FROM Opportunity WHERE Id = '${safeId(cd.records[0].Opportunity__c)}' LIMIT 1`
+    );
+    if (opp.records.length > 0) {
+      accountId = opp.records[0].AccountId;
+      householdId = opp.records[0].Account?.Household__c ?? null;
+      accountName = opp.records[0].Account?.Name ?? "Account";
+    }
+  }
+
+  if (!accountId) return [];
 
   const linkedIds = [accountId, householdId].filter(Boolean) as string[];
   if (linkedIds.length === 0) return [];
@@ -271,17 +287,27 @@ export async function uploadCaseDesignPDF(
 ): Promise<{ contentVersionId: string; contentDocumentId: string }> {
   const conn = await getSFConnection();
 
-  const cd = await conn.query<{ Opportunity__c: string }>(
-    `SELECT Opportunity__c FROM Case_Design__c WHERE Id = '${safeId(caseDesignId)}' LIMIT 1`
+  const cd = await conn.query<{ Account__c: string | null; Opportunity__c: string | null }>(
+    `SELECT Account__c, Opportunity__c FROM Case_Design__c WHERE Id = '${safeId(caseDesignId)}' LIMIT 1`
   );
   if (cd.records.length === 0) throw new Error("Case Design not found");
+
+  let accountId: string | null = cd.records[0].Account__c;
+  let householdId: string | null = null;
   const oppId = cd.records[0].Opportunity__c;
 
-  const opp = await conn.query<{ AccountId: string; Account: { Household__c?: string } | null }>(
-    `SELECT AccountId, Account.Household__c FROM Opportunity WHERE Id = '${safeId(oppId)}' LIMIT 1`
-  );
-  const accountId = opp.records[0]?.AccountId;
-  const householdId = opp.records[0]?.Account?.Household__c;
+  if (accountId) {
+    const acc = await conn.query<{ Household__c: string | null }>(
+      `SELECT Household__c FROM Account WHERE Id = '${safeId(accountId)}' LIMIT 1`
+    );
+    householdId = acc.records[0]?.Household__c ?? null;
+  } else if (oppId) {
+    const opp = await conn.query<{ AccountId: string; Account: { Household__c?: string } | null }>(
+      `SELECT AccountId, Account.Household__c FROM Opportunity WHERE Id = '${safeId(oppId)}' LIMIT 1`
+    );
+    accountId = opp.records[0]?.AccountId ?? null;
+    householdId = opp.records[0]?.Account?.Household__c ?? null;
+  }
 
   const cv = await conn.sobject("ContentVersion").create({
     Title: fileName,
@@ -295,7 +321,9 @@ export async function uploadCaseDesignPDF(
   const cvRow = (await conn.sobject("ContentVersion").retrieve(cvId)) as { ContentDocumentId?: string };
   const contentDocumentId = cvRow.ContentDocumentId as string;
 
-  const targets = [oppId, accountId, householdId].filter((x): x is string => Boolean(x));
+  const targets = [oppId, accountId, householdId].filter(
+    (x): x is string => typeof x === "string" && x.length > 0
+  );
   for (const t of targets) {
     try {
       await conn.sobject("ContentDocumentLink").create({
@@ -330,16 +358,18 @@ export interface MeetingIntakeAsset {
 
 export async function loadHouseholdAssets(caseDesignId: string): Promise<MeetingIntakeAsset[]> {
   const conn = await getSFConnection();
-  const cd = await conn.query<{ Opportunity__c: string }>(
-    `SELECT Opportunity__c FROM Case_Design__c WHERE Id = '${safeId(caseDesignId)}' LIMIT 1`
+  const cd = await conn.query<{ Account__c: string | null; Opportunity__c: string | null }>(
+    `SELECT Account__c, Opportunity__c FROM Case_Design__c WHERE Id = '${safeId(caseDesignId)}' LIMIT 1`
   );
   if (cd.records.length === 0) return [];
-  const oppId = cd.records[0].Opportunity__c;
 
-  const opp = await conn.query<{ AccountId: string }>(
-    `SELECT AccountId FROM Opportunity WHERE Id = '${safeId(oppId)}' LIMIT 1`
-  );
-  const accountId = opp.records[0]?.AccountId;
+  let accountId: string | null = cd.records[0].Account__c;
+  if (!accountId && cd.records[0].Opportunity__c) {
+    const opp = await conn.query<{ AccountId: string }>(
+      `SELECT AccountId FROM Opportunity WHERE Id = '${safeId(cd.records[0].Opportunity__c)}' LIMIT 1`
+    );
+    accountId = opp.records[0]?.AccountId ?? null;
+  }
   if (!accountId) return [];
 
   // Meeting_1_Intake records are tied to Account; pull all their assets

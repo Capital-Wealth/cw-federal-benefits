@@ -82,7 +82,8 @@ export type AnnotationStyle = "Standard" | "High Priority" | "Disclaimer" | "Not
 export interface CaseDesignParent {
   Id: string;
   Name: string;
-  Opportunity__c: string;
+  Account__c: string | null;
+  Opportunity__c: string | null;
   Status__c: CaseDesignStatus;
   Plan_Date__c: string | null;
   Document_Title__c: string;

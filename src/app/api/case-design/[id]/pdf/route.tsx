@@ -18,7 +18,10 @@ export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: strin
     const bundle = await loadCaseDesign(id);
     if (!bundle) return Response.json({ error: "Case Design not found" }, { status: 404 });
 
-    const householdLabel = await resolveHouseholdLabel(bundle.parent.Opportunity__c);
+    const householdLabel = await resolveHouseholdLabel(
+      bundle.parent.Account__c,
+      bundle.parent.Opportunity__c
+    );
 
     const buffer = await renderToBuffer(<CaseDesignPDF bundle={bundle} householdLabel={householdLabel} />);
     const fileName = `${householdLabel.replace(/[^A-Za-z0-9 &-]/g, "_")} ${bundle.parent.Document_Title__c || "Money Map"}.pdf`;
@@ -36,14 +39,26 @@ export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: strin
   }
 }
 
-async function resolveHouseholdLabel(oppId: string): Promise<string> {
+async function resolveHouseholdLabel(
+  accountId: string | null,
+  oppId: string | null
+): Promise<string> {
   try {
     const conn = await getSFConnection();
-    const r = await conn.query<{ Name: string; Account: { Name?: string } | null }>(
-      `SELECT Name, Account.Name FROM Opportunity WHERE Id = '${oppId}' LIMIT 1`
-    );
-    return r.records[0]?.Account?.Name || r.records[0]?.Name || "Client";
+    if (accountId) {
+      const r = await conn.query<{ Name: string }>(
+        `SELECT Name FROM Account WHERE Id = '${accountId}' LIMIT 1`
+      );
+      if (r.records[0]?.Name) return r.records[0].Name;
+    }
+    if (oppId) {
+      const r = await conn.query<{ Name: string; Account: { Name?: string } | null }>(
+        `SELECT Name, Account.Name FROM Opportunity WHERE Id = '${oppId}' LIMIT 1`
+      );
+      return r.records[0]?.Account?.Name || r.records[0]?.Name || "Client";
+    }
   } catch {
-    return "Client";
+    // fall through
   }
+  return "Client";
 }
