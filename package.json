@@ -10,8 +10,12 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.87.0",
+    "@react-pdf/renderer": "^4.5.1",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.103.0",
+    "@types/dagre": "^0.7.54",
+    "@xyflow/react": "^12.10.2",
+    "dagre": "^0.8.5",
     "date-fns": "^4.1.0",
     "jsforce": "^3.10.14",
     "next": "16.2.3",
