@@ -46,7 +46,11 @@ export default function CaseDesignBuilder({ bundle: initial }: { bundle: CaseDes
   };
 
   const finalize = async () => {
-    if (!window.confirm("Finalize this Case Design? This locks fields and uploads the PDF to Salesforce.")) {
+    if (
+      !window.confirm(
+        "Finalize this Case Design? Generates the PDF and uploads it to Salesforce. You can still edit afterward."
+      )
+    ) {
       return;
     }
     try {
@@ -58,6 +62,34 @@ export default function CaseDesignBuilder({ bundle: initial }: { bundle: CaseDes
       window.location.reload();
     } catch (e) {
       window.alert(e instanceof Error ? e.message : "Finalize failed");
+    }
+  };
+
+  const confirmAndCreate = async () => {
+    const destCount = bundle.positions.filter((p) => p.Role__c === "Destination").length;
+    if (
+      !window.confirm(
+        `Confirm & create ${destCount} child Opportunit${destCount === 1 ? "y" : "ies"}? This LOCKS the Case Design and creates a new Salesforce Opportunity for each destination. You cannot edit after confirming.`
+      )
+    ) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/case-design/${parent.Id}/confirm`, { method: "POST" });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        childOpportunities?: { destinationId: string; opportunityId: string; name: string }[];
+      };
+      if (!res.ok) {
+        throw new Error(data.error || `Confirm failed (${res.status})`);
+      }
+      const childCount = data.childOpportunities?.length ?? 0;
+      window.alert(
+        `Locked. Created ${childCount} child Opportunit${childCount === 1 ? "y" : "ies"} in Salesforce.`
+      );
+      window.location.reload();
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : "Confirm failed");
     }
   };
 
@@ -105,13 +137,23 @@ export default function CaseDesignBuilder({ bundle: initial }: { bundle: CaseDes
             Generate PDF
           </button>
           {!locked && (
-            <button
-              type="button"
-              onClick={finalize}
-              className="px-3 py-1.5 text-xs font-medium bg-[#C7A356] text-[#16253C] rounded hover:bg-[#D9B96E]"
-            >
-              Finalize
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={finalize}
+                className="px-3 py-1.5 text-xs font-medium bg-white/10 border border-white/20 text-white rounded hover:bg-white/20"
+              >
+                Finalize
+              </button>
+              <button
+                type="button"
+                onClick={confirmAndCreate}
+                className="px-3 py-1.5 text-xs font-bold bg-[#C7A356] text-[#16253C] rounded hover:bg-[#D9B96E]"
+                title="Locks the Case Design and creates child Opportunities in Salesforce for each destination."
+              >
+                Confirm & Create Opps
+              </button>
+            </>
           )}
         </div>
       </header>

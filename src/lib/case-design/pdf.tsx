@@ -216,48 +216,54 @@ function PageContent(props: {
           </G>
         </Svg>
 
-        {/* nodes layered on top of SVG */}
+        {/* node boxes — siblings of the SVG so absolute positioning anchors to canvasWrap */}
         {layout.nodes.map((n) => {
           const p = n.position;
-          const fee = formatFeeBadge(p);
           return (
-            <View key={n.id}>
-              <View
-                style={[
-                  styles.nodeBox,
-                  {
-                    left: n.x * scale + 8,
-                    top: n.y * scale,
-                    width: (n.width - 16) * scale,
-                    height: n.height * scale,
-                  },
-                ]}
-              >
-                <Text style={styles.ownerName}>{p.Owner_Label__c}</Text>
-                <Text style={styles.acctType}>
-                  {p.Account_Type__c === "Other" && p.Account_Type_Other__c
-                    ? p.Account_Type_Other__c
-                    : p.Account_Type__c}
-                </Text>
-                <Text style={styles.custodian}>{p.Custodian__c}</Text>
-                {p.Product_Detail__c && <Text style={styles.product}>{p.Product_Detail__c}</Text>}
-                {p.Account_Number_Last4__c && <Text style={styles.suffix}>...{p.Account_Number_Last4__c}</Text>}
-                <Text style={styles.amount}>{formatValueDisplay(p)}</Text>
-              </View>
-              {fee && (
-                <Text
-                  style={[
-                    styles.feePill,
-                    {
-                      left: n.x * scale + (n.width - 16) * scale * 0.15,
-                      top: (n.y + n.height) * scale - 4,
-                    },
-                  ]}
-                >
-                  {fee}
-                </Text>
+            <View
+              key={`box-${n.id}`}
+              style={[
+                styles.nodeBox,
+                {
+                  left: n.x * scale + 8,
+                  top: n.y * scale,
+                  width: (n.width - 16) * scale,
+                  height: n.height * scale,
+                },
+              ]}
+            >
+              <Text style={styles.ownerName}>{p.Owner_Label__c}</Text>
+              <Text style={styles.acctType}>
+                {p.Account_Type__c === "Other" && p.Account_Type_Other__c
+                  ? p.Account_Type_Other__c
+                  : p.Account_Type__c}
+              </Text>
+              <Text style={styles.custodian}>{p.Custodian__c}</Text>
+              {p.Product_Detail__c && <Text style={styles.product}>{p.Product_Detail__c}</Text>}
+              {p.Account_Number_Last4__c && (
+                <Text style={styles.suffix}>...{p.Account_Number_Last4__c}</Text>
               )}
+              <Text style={styles.amount}>{formatValueDisplay(p)}</Text>
             </View>
+          );
+        })}
+        {/* fee pills as flat siblings — each is its own absolutely-positioned element */}
+        {layout.nodes.map((n) => {
+          const fee = formatFeeBadge(n.position);
+          if (!fee) return null;
+          return (
+            <Text
+              key={`fee-${n.id}`}
+              style={[
+                styles.feePill,
+                {
+                  left: n.x * scale + (n.width - 16) * scale * 0.15,
+                  top: (n.y + n.height) * scale - 4,
+                },
+              ]}
+            >
+              {fee}
+            </Text>
           );
         })}
 
