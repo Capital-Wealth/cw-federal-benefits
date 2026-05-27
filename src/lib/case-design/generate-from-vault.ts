@@ -617,9 +617,38 @@ export async function generateFromVault(
   }
 
   if (pending.length === 0) {
+    const personCount = persons.length;
+    const generalRows = vaults.general.size;
+    const federalRows = vaults.federal.size;
+    const mappingCount = cmts.vaultMappings.length;
+    let totalChecked = 0;
+    let totalNonZero = 0;
+    const sampleAmounts: string[] = [];
+    for (const person of persons) {
+      for (const mapping of cmts.vaultMappings) {
+        totalChecked += 1;
+        const vault =
+          mapping.Source_Object__c === "Federal_Benefits_Intake__c"
+            ? vaults.federal.get(person.ContactId)
+            : vaults.general.get(person.ContactId);
+        if (!vault) continue;
+        let amt = 0;
+        if (mapping.Aggregate_Fields__c) {
+          for (const f of mapping.Aggregate_Fields__c.split(",").map((s) => s.trim())) {
+            const v = vault[f];
+            if (typeof v === "number") amt += v;
+          }
+        } else if (mapping.Source_Field__c) {
+          const v = vault[mapping.Source_Field__c];
+          if (typeof v === "number") amt = v;
+        }
+        if (amt > 0) totalNonZero += 1;
+        if (sampleAmounts.length < 5) sampleAmounts.push(`${mapping.DeveloperName}=${amt}`);
+      }
+    }
     return makeSkipResult(
       "skipped-no-vault",
-      "Vault rows exist but no balance fields exceeded the Min_Balance threshold",
+      `Diag: persons=${personCount} genRows=${generalRows} fedRows=${federalRows} mappings=${mappingCount} checked=${totalChecked} nonZero=${totalNonZero} sample=[${sampleAmounts.join(", ")}]`,
     );
   }
 
