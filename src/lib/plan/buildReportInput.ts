@@ -64,13 +64,27 @@ export function buildReportInput(
   state: PlanState,
   meta: { fullName: string; dateOfBirth: string; address: string | null },
 ): ReportInput {
-  // Soft defaults: when a date is missing, fall back to today so the calc
-  // engine produces 0s instead of NaNs. The UI surfaces which fields are
-  // estimated so the advisor knows the result is partial.
+  // Soft defaults: when a date is missing, fall back to a value that lets
+  // the calc engine produce something useful instead of NaNs.
+  //  - SCD missing → today (gives 0 years of service, honest)
+  //  - Planned retirement missing → DOB + 57 (FERS MRA for anyone born 1970+,
+  //    and matches the LEO mandatory retirement age — the safe baseline)
+  //  - DOB missing → 1970-01-01
   const today = new Date().toISOString().slice(0, 10);
-  const scd = state.Service_Computation_Date__c || today;
-  const plannedRetirement = state.Desired_Retirement_Date__c || today;
   const dob = meta.dateOfBirth || "1970-01-01";
+  const scd = state.Service_Computation_Date__c || today;
+
+  let plannedRetirement = state.Desired_Retirement_Date__c;
+  if (!plannedRetirement) {
+    const dobDate = new Date(dob);
+    if (!isNaN(dobDate.getTime())) {
+      const retDate = new Date(dobDate);
+      retDate.setFullYear(retDate.getFullYear() + 57);
+      plannedRetirement = retDate.toISOString().slice(0, 10);
+    } else {
+      plannedRetirement = today;
+    }
+  }
 
   const civilian = deriveCreditableService(scd, plannedRetirement);
 
