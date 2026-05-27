@@ -1,12 +1,19 @@
 /**
  * MoneyMapNode — custom react-flow node rendering a single account box in the
- * visual style of the printed Money Map PDFs (white box, blue owner name,
- * curly-brace SVG side decorations, bold dollar amount, optional fee pill).
+ * visual style of the printed Money Map PDFs. White card, blue owner name,
+ * curly-brace SVG side decorations, centered amount in bold, optional fee
+ * pill below the box, and a "Consider Replacement" italic call-out when the
+ * advisor has set the override.
  */
 "use client";
 
 import { memo } from "react";
-import { Handle, Position as HandlePosition, type NodeProps, type Node } from "@xyflow/react";
+import {
+  Handle,
+  Position as HandlePosition,
+  type NodeProps,
+  type Node,
+} from "@xyflow/react";
 import type { CaseDesignPosition } from "@/lib/case-design/types";
 import {
   formatValueDisplay,
@@ -23,21 +30,28 @@ export type MoneyMapNodeType = Node<MoneyMapNodeData, "moneyMap">;
 
 function CurlyBrace({ side }: { side: "left" | "right" }) {
   const flip = side === "right";
+  const w = 12;
+  const h = NODE_HEIGHT;
   return (
     <svg
-      width={10}
-      height={NODE_HEIGHT}
-      viewBox={`0 0 10 ${NODE_HEIGHT}`}
-      className={`absolute top-0 ${flip ? "-right-[10px]" : "-left-[10px]"}`}
+      width={w}
+      height={h}
+      viewBox={`0 0 ${w} ${h}`}
+      className={`absolute top-0 pointer-events-none ${flip ? "-right-3" : "-left-3"}`}
       style={{ transform: flip ? "scaleX(-1)" : undefined }}
-      aria-hidden
+      aria-hidden="true"
     >
+      {/* Top curve into midpoint pinch, then midpoint pinch into bottom curve. */}
       <path
-        d={`M9 0 C 3 12, 3 ${NODE_HEIGHT / 2 - 8}, 1 ${NODE_HEIGHT / 2}
-            C 3 ${NODE_HEIGHT / 2 + 8}, 3 ${NODE_HEIGHT - 12}, 9 ${NODE_HEIGHT}`}
+        d={`
+          M ${w - 1} 1
+          C ${w - 6} 8, ${w - 6} ${h / 2 - 10}, 1 ${h / 2}
+          C ${w - 6} ${h / 2 + 10}, ${w - 6} ${h - 8}, ${w - 1} ${h - 1}
+        `}
         fill="none"
-        stroke="#9CA3AF"
-        strokeWidth={1.2}
+        stroke="#94A3B8"
+        strokeWidth={1.25}
+        strokeLinecap="round"
       />
     </svg>
   );
@@ -47,7 +61,8 @@ function MoneyMapNodeInner({ data, selected }: NodeProps<MoneyMapNodeType>) {
   const p = data.position;
   const value = formatValueDisplay(p);
   const fee = formatFeeBadge(p);
-  const replacement = p.Annual_Fee_Display__c === "Consider Replacement if appropriate";
+  const replacement =
+    p.Annual_Fee_Display__c === "Consider Replacement if appropriate";
 
   const accountTypeDisplay =
     p.Account_Type__c === "Other" && p.Account_Type_Other__c
@@ -55,43 +70,81 @@ function MoneyMapNodeInner({ data, selected }: NodeProps<MoneyMapNodeType>) {
       : p.Account_Type__c;
 
   return (
-    <div className="relative" style={{ width: NODE_WIDTH }}>
-      <Handle type="target" position={HandlePosition.Left} className="!bg-zinc-400" />
-      <Handle type="source" position={HandlePosition.Right} className="!bg-zinc-400" />
+    <div
+      className="relative group"
+      style={{ width: NODE_WIDTH }}
+    >
+      {/* react-flow connection handles — kept subtle (semi-transparent on hover) */}
+      <Handle
+        type="target"
+        position={HandlePosition.Left}
+        className="!w-2 !h-2 !bg-zinc-400 !border-2 !border-white opacity-0 group-hover:opacity-100 transition-opacity duration-200 motion-reduce:transition-none"
+      />
+      <Handle
+        type="source"
+        position={HandlePosition.Right}
+        className="!w-2 !h-2 !bg-zinc-400 !border-2 !border-white opacity-0 group-hover:opacity-100 transition-opacity duration-200 motion-reduce:transition-none"
+      />
+
       <CurlyBrace side="left" />
       <CurlyBrace side="right" />
+
       <div
-        className={`bg-white border rounded-lg px-3 py-2 shadow-sm ${
-          selected ? "border-[#C7A356] ring-2 ring-[#C7A356]/30" : "border-zinc-300"
+        className={`bg-white rounded-lg px-3 py-2.5 cursor-pointer transition-shadow duration-200 motion-reduce:transition-none ${
+          selected
+            ? "ring-2 ring-[#C7A356] shadow-md"
+            : "ring-1 ring-zinc-200 group-hover:shadow-md"
         }`}
         style={{ width: NODE_WIDTH, minHeight: NODE_HEIGHT }}
       >
         <div className="text-center leading-tight">
-          <div className="font-bold text-[13px] text-[#1E40AF]">
+          <div className="font-bold text-sm text-[#1E40AF] truncate">
             {p.Owner_Label__c || "—"}
           </div>
-          <div className="text-[12px] text-[#1E40AF]">{accountTypeDisplay}</div>
+          <div className="text-[12px] font-medium text-[#1E40AF] truncate">
+            {accountTypeDisplay}
+          </div>
           {p.Custodian__c && (
-            <div className="text-[12px] text-black mt-0.5">{p.Custodian__c}</div>
+            <div className="text-[12px] font-semibold text-zinc-900 mt-1 truncate">
+              {p.Custodian__c}
+              {p.Account_Number_Last4__c && (
+                <span className="text-[11px] font-normal text-zinc-500 ml-1">
+                  {p.Account_Number_Last4__c}
+                </span>
+              )}
+            </div>
           )}
           {p.Product_Detail__c && (
-            <div className="text-[11px] italic text-black/80">{p.Product_Detail__c}</div>
-          )}
-          {p.Account_Number_Last4__c && (
-            <div className="text-[10px] text-zinc-500">···{p.Account_Number_Last4__c}</div>
+            <div className="text-[11px] italic text-zinc-700 truncate">
+              {p.Product_Detail__c}
+            </div>
           )}
         </div>
-        <div className="mt-1 text-center font-bold text-[14px] text-black">{value}</div>
-        {replacement && (
-          <div className="text-center text-[10px] italic text-rose-600 mt-0.5">
-            Consider Replacement if appropriate
+        <div className="mt-1.5 text-center font-bold text-base text-zinc-900">
+          {value}
+        </div>
+        {p.Contribution_Note__c && (
+          <div className="mt-1 text-center text-[10px] text-zinc-600 leading-tight whitespace-pre-line">
+            {p.Contribution_Note__c}
           </div>
         )}
       </div>
+
+      {/* Fee pill OR "Consider Replacement" italic, anchored below the box. */}
       {fee && !replacement && (
-        <div className="mt-1 mx-auto inline-block px-2 py-0.5 rounded-full border border-zinc-300 bg-white text-[11px] text-zinc-700 absolute left-1/2 -translate-x-1/2 whitespace-nowrap"
-             style={{ top: NODE_HEIGHT + 4 }}>
+        <div
+          className="absolute left-1/2 -translate-x-1/2 mt-1 px-2 py-0.5 rounded-full border border-zinc-300 bg-white text-[10px] text-zinc-700 whitespace-nowrap shadow-sm"
+          style={{ top: NODE_HEIGHT + 2 }}
+        >
           {fee}
+        </div>
+      )}
+      {replacement && (
+        <div
+          className="absolute left-1/2 -translate-x-1/2 mt-1 text-[10px] italic text-zinc-600 whitespace-nowrap"
+          style={{ top: NODE_HEIGHT + 4 }}
+        >
+          Consider Replacement if appropriate
         </div>
       )}
     </div>

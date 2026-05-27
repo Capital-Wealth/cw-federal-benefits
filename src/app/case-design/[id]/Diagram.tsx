@@ -1,7 +1,8 @@
 /**
- * Diagram — react-flow canvas for the Case Design. Builds nodes/edges from the
- * bundle via dagre auto-layout (overridden by manual Position_X/Y), persists
- * drag-to-nudge through updatePosition, and exposes a reset-layout action.
+ * Diagram — react-flow canvas. Builds nodes/edges from the bundle via dagre
+ * auto-layout (overridden by manual Position_X/Y). Drag-to-nudge persists via
+ * updatePosition. Dragging from a source handle to a destination opens the
+ * EdgeMethodPicker so the advisor commits a real Method__c with the new edge.
  */
 "use client";
 
@@ -16,26 +17,61 @@ import {
   type Edge as RFEdge,
   type NodeTypes,
   type OnNodeDrag,
+  type OnConnect,
+  type Connection,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
 import type {
   CaseDesignBundle,
+  CaseDesignEdge,
   CaseDesignPosition,
+  EdgeMethod,
 } from "@/lib/case-design/types";
 import { layoutDiagram, methodLabel } from "@/lib/case-design/auto-layout";
 import { MoneyMapNode, type MoneyMapNodeData } from "./MoneyMapNode";
+import EmptyState from "./components/EmptyState";
+import EdgeMethodPicker from "./components/EdgeMethodPicker";
 
 interface DiagramProps {
   bundle: CaseDesignBundle;
-  updatePosition: (id: string, patch: Partial<CaseDesignPosition>) => Promise<void>;
-  readOnly?: boolean;
+  householdLabel: string;
+  selectedPositionId: string | null;
+  intakeAssetCount: number;
+  readOnly: boolean;
+  onSelectNode: (id: string | null) => void;
+  onAddSource: () => void;
+  onLoadIntake: () => void;
+  updatePosition: (
+    id: string,
+    patch: Partial<CaseDesignPosition>
+  ) => Promise<void>;
+  addEdge: (data: Partial<CaseDesignEdge>) => Promise<string>;
 }
 
 const nodeTypes: NodeTypes = { moneyMap: MoneyMapNode };
 
-export default function Diagram({ bundle, updatePosition, readOnly = false }: DiagramProps) {
+interface PendingConnection {
+  fromId: string;
+  toId: string;
+  screenX: number;
+  screenY: number;
+}
+
+export default function Diagram({
+  bundle,
+  householdLabel,
+  selectedPositionId,
+  intakeAssetCount,
+  readOnly,
+  onSelectNode,
+  onAddSource,
+  onLoadIntake,
+  updatePosition,
+  addEdge,
+}: DiagramProps) {
   const [resetting, setResetting] = useState(false);
+  const [pending, setPending] = useState<PendingConnection | null>(null);
 
   const layout = useMemo(
     () => layoutDiagram(bundle.positions, bundle.edges),
@@ -51,8 +87,9 @@ export default function Diagram({ bundle, updatePosition, readOnly = false }: Di
         data: { position: n.position },
         draggable: !readOnly,
         selectable: true,
+        selected: n.id === selectedPositionId,
       })),
-    [layout.nodes, readOnly]
+    [layout.nodes, readOnly, selectedPositionId]
   );
 
   const edges: RFEdge[] = useMemo(
@@ -62,12 +99,12 @@ export default function Diagram({ bundle, updatePosition, readOnly = false }: Di
         source: e.from,
         target: e.to,
         label: methodLabel(e.edge),
-        labelStyle: { fill: "#111827", fontSize: 11, fontWeight: 500 },
-        labelBgStyle: { fill: "#ffffff", fillOpacity: 0.9 },
+        labelStyle: { fill: "#16253C", fontSize: 11, fontWeight: 600 },
+        labelBgStyle: { fill: "#ffffff", fillOpacity: 0.95 },
         labelBgPadding: [4, 2] as [number, number],
-        labelBgBorderRadius: 3,
-        style: { stroke: "#16253C", strokeWidth: 1.5 },
-        markerEnd: { type: MarkerType.ArrowClosed, color: "#16253C" },
+        labelBgBorderRadius: 4,
+        style: { stroke: "#475569", strokeWidth: 1.5 },
+        markerEnd: { type: MarkerType.ArrowClosed, color: "#475569" },
       })),
     [layout.edges]
   );
@@ -90,7 +127,10 @@ export default function Diagram({ bundle, updatePosition, readOnly = false }: Di
     try {
       for (const p of bundle.positions) {
         if (p.Position_X__c != null || p.Position_Y__c != null) {
-          await updatePosition(p.Id, { Position_X__c: null, Position_Y__c: null });
+          await updatePosition(p.Id, {
+            Position_X__c: null,
+            Position_Y__c: null,
+          });
         }
       }
     } finally {
@@ -98,36 +138,146 @@ export default function Diagram({ bundle, updatePosition, readOnly = false }: Di
     }
   }, [bundle.positions, updatePosition, readOnly]);
 
+  const onConnect: OnConnect = useCallback(
+    (conn: Connection) => {
+      if (readOnly || !conn.source || !conn.target) return;
+      // Stash the connection; show the method picker near the cursor.
+      const cursor =
+        typeof window !== "undefined"
+          ? (window as unknown as { _cwLastMouse?: { x: number; y: number } })
+              ._cwLastMouse || { x: window.innerWidth / 2, y: window.innerHeight / 2 }
+          : { x: 200, y: 200 };
+      setPending({
+        fromId: conn.source,
+        toId: conn.target,
+        screenX: cursor.x,
+        screenY: cursor.y,
+      });
+    },
+    [readOnly]
+  );
+
+  const onNodeClick = useCallback(
+    (_event: React.MouseEvent, node: RFNode<MoneyMapNodeData>) => {
+      onSelectNode(node.id);
+    },
+    [onSelectNode]
+  );
+
+  const onPaneClick = useCallback(() => {
+    onSelectNode(null);
+  }, [onSelectNode]);
+
+  const handleConfirmEdge = useCallback(
+    async (method: EdgeMethod, customLabel?: string) => {
+      if (!pending) return;
+      const data: Partial<CaseDesignEdge> = {
+        From_Position__c: pending.fromId,
+        To_Position__c: pending.toId,
+        Method__c: method,
+        Status__c: "Planned",
+      };
+      if (method === "Custom" && customLabel) {
+        data.Method_Label_Override__c = customLabel;
+      }
+      setPending(null);
+      await addEdge(data);
+    },
+    [pending, addEdge]
+  );
+
+  const fromLabel = pending
+    ? bundle.positions.find((p) => p.Id === pending.fromId)?.Owner_Label__c || "?"
+    : "";
+  const toLabel = pending
+    ? bundle.positions.find((p) => p.Id === pending.toId)?.Owner_Label__c || "?"
+    : "";
+
+  const isEmpty = bundle.positions.length === 0;
+
   return (
-    <div className="relative w-full h-full">
-      {!readOnly && (
+    <div
+      className="relative w-full h-full"
+      onMouseMoveCapture={(e) => {
+        if (typeof window !== "undefined") {
+          (window as unknown as { _cwLastMouse?: { x: number; y: number } })._cwLastMouse = {
+            x: e.clientX,
+            y: e.clientY,
+          };
+        }
+      }}
+    >
+      {!readOnly && !isEmpty && (
         <div className="absolute z-10 top-3 right-3 flex gap-2">
           <button
             type="button"
             onClick={resetLayout}
             disabled={resetting}
-            className="px-3 py-1.5 text-xs font-medium bg-white border border-zinc-300 rounded-md shadow-sm hover:border-[#C7A356] disabled:opacity-50"
+            className="px-3 py-1.5 min-h-[36px] text-xs font-medium bg-white border border-zinc-300 rounded-md shadow-sm hover:border-[#C7A356] hover:text-[#16253C] cursor-pointer disabled:opacity-50 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[#C7A356] focus:ring-offset-2 motion-reduce:transition-none"
           >
-            {resetting ? "Resetting..." : "Reset auto-layout"}
+            {resetting ? "Resetting…" : "Reset layout"}
           </button>
         </div>
       )}
+
       <ReactFlow
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
         onNodeDragStop={onNodeDragStop}
+        onConnect={onConnect}
+        onNodeClick={onNodeClick}
+        onPaneClick={onPaneClick}
         fitView
-        fitViewOptions={{ padding: 0.15 }}
+        fitViewOptions={{ padding: 0.2 }}
         proOptions={{ hideAttribution: true }}
         nodesDraggable={!readOnly}
-        nodesConnectable={false}
+        nodesConnectable={!readOnly}
         elementsSelectable
+        connectionRadius={40}
       >
-        <Background gap={20} color="#E5E7EB" />
+        <Background gap={24} size={1} color="#E4E4E7" />
         <Controls showInteractive={false} />
-        <MiniMap pannable zoomable nodeColor="#16253C" maskColor="rgba(22,37,60,0.06)" />
+        {!isEmpty && (
+          <MiniMap
+            pannable
+            zoomable
+            nodeColor="#16253C"
+            maskColor="rgba(22,37,60,0.06)"
+            className="!bg-white"
+          />
+        )}
       </ReactFlow>
+
+      {isEmpty && (
+        <EmptyState
+          householdLabel={householdLabel}
+          intakeCount={intakeAssetCount}
+          onAddSource={onAddSource}
+          onImportIntake={intakeAssetCount > 0 ? onLoadIntake : undefined}
+        />
+      )}
+
+      {/* Bottom helper bar */}
+      {!isEmpty && !readOnly && (
+        <div className="absolute bottom-0 left-0 right-0 h-8 bg-white/85 backdrop-blur border-t border-zinc-200 flex items-center px-4 text-[11px] text-zinc-600 pointer-events-none">
+          <span>
+            Click a box to edit
+            <span className="mx-2 text-zinc-300">·</span>
+            Drag from a source handle to a destination to connect them
+          </span>
+        </div>
+      )}
+
+      {pending && (
+        <EdgeMethodPicker
+          fromLabel={fromLabel}
+          toLabel={toLabel}
+          position={{ x: pending.screenX, y: pending.screenY }}
+          onConfirm={handleConfirmEdge}
+          onCancel={() => setPending(null)}
+        />
+      )}
     </div>
   );
 }

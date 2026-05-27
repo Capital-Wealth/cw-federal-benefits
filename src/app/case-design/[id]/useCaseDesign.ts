@@ -174,7 +174,14 @@ export function useCaseDesign(initial: CaseDesignBundle): UseCaseDesignReturn {
         return data as T;
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Request failed";
-        if (typeof window !== "undefined") window.alert(msg);
+        if (typeof window !== "undefined") {
+          // Surface to the builder via a custom event; the builder shows a
+          // non-blocking toast. Fallback to window.alert if no listener is
+          // attached (preserves prior behavior for any external consumers).
+          const ev = new CustomEvent("cw-case-design-error", { detail: msg, cancelable: true });
+          const handled = !window.dispatchEvent(ev);
+          if (!handled) window.alert(msg);
+        }
         throw err;
       } finally {
         setInflight((n) => Math.max(0, n - 1));
