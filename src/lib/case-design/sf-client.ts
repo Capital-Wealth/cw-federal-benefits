@@ -8,6 +8,7 @@
 
 import { getSFConnection } from "@/lib/salesforce/connector";
 import type {
+  AccountType,
   CaseDesignBundle,
   CaseDesignParent,
   CaseDesignSection,
@@ -387,4 +388,280 @@ export async function loadHouseholdAssets(caseDesignId: string): Promise<Meeting
      ORDER BY Balance__c DESC NULLS LAST`
   );
   return assets.records;
+}
+
+// ---------- Auto-fill (Meeting 1 Intake OR Complete Opportunities) ----------
+
+/**
+ * A single auto-fill suggestion that maps cleanly onto a draft
+ * Case_Design_Position__c (Role=Source). `origin` says where the row came
+ * from so the UI can surface it in the success toast.
+ */
+export interface AutoFillSourceSuggestion {
+  origin: "meeting1-intake" | "opportunity";
+  external_id: string;
+  Owner_Label__c: string;
+  Account_Type__c: AccountType;
+  Custodian__c: string;
+  Product_Detail__c: string | null;
+  Amount__c: number | null;
+  Cash_Value__c: number | null;
+  Death_Benefit__c: number | null;
+  Source_Asset__c: string | null;
+}
+
+interface AutoFillResult {
+  origin: "meeting1-intake" | "opportunity" | "none";
+  sources: AutoFillSourceSuggestion[];
+  household_account_id: string | null;
+}
+
+/**
+ * Resolve the Case Design's household, then return a ranked list of source
+ * suggestions. Meeting 1 Intake assets take priority when present; otherwise
+ * we fall back to the household's Complete Opportunities so a household
+ * without a Meeting 1 record still gets a useful starting canvas.
+ */
+export async function loadAutoFillSources(caseDesignId: string): Promise<AutoFillResult> {
+  const conn = await getSFConnection();
+  const cd = await conn.query<{ Account__c: string | null; Opportunity__c: string | null }>(
+    `SELECT Account__c, Opportunity__c FROM Case_Design__c WHERE Id = '${safeId(caseDesignId)}' LIMIT 1`
+  );
+  if (cd.records.length === 0) return { origin: "none", sources: [], household_account_id: null };
+
+  let accountId: string | null = cd.records[0].Account__c;
+  if (!accountId && cd.records[0].Opportunity__c) {
+    const opp = await conn.query<{ AccountId: string }>(
+      `SELECT AccountId FROM Opportunity WHERE Id = '${safeId(cd.records[0].Opportunity__c)}' LIMIT 1`
+    );
+    accountId = opp.records[0]?.AccountId ?? null;
+  }
+  if (!accountId) return { origin: "none", sources: [], household_account_id: null };
+
+  // Walk Account__c → Person Accounts under the household (covers spouse
+  // accounts). The household ID itself may also own intake/opps directly.
+  const personAccounts = await conn.query<{ Id: string; FirstName: string | null; LastName: string | null }>(
+    `SELECT Id, FirstName, LastName FROM Account
+     WHERE (Id = '${safeId(accountId)}' OR Household__c = '${safeId(accountId)}')
+     AND IsPersonAccount = true`
+  );
+  const accountIdList = [
+    accountId,
+    ...personAccounts.records.map((p) => p.Id).filter((id) => id !== accountId),
+  ];
+  const accountInClause = accountIdList.map((id) => `'${safeId(id)}'`).join(",");
+  // Quick lookup: Account Id → FirstName for owner-label resolution.
+  const firstNameByAcct = new Map<string, string>();
+  for (const p of personAccounts.records) {
+    if (p.FirstName) firstNameByAcct.set(p.Id, p.FirstName);
+  }
+
+  // --- 1) Meeting 1 Intake (preferred) ---
+  const intakes = await conn.query<{ Id: string }>(
+    `SELECT Id FROM Meeting_1_Intake__c WHERE Account__c IN (${accountInClause})`
+  );
+  if (intakes.records.length > 0) {
+    const intakeIds = intakes.records.map((r) => `'${r.Id}'`).join(",");
+    const assets = await conn.query<MeetingIntakeAsset>(
+      `SELECT Id, Name, Asset_Owner__c, Category__c, Company__c, Investment_Type__c,
+              Tax_Status__c, Balance__c, Market_Value__c, Cash_Value__c, Death_Benefit__c
+       FROM Meeting_1_Intake_Asset__c
+       WHERE Meeting_1_Intake__c IN (${intakeIds})
+       ORDER BY Balance__c DESC NULLS LAST`
+    );
+    if (assets.records.length > 0) {
+      return {
+        origin: "meeting1-intake",
+        household_account_id: accountId,
+        sources: assets.records.map((a) => ({
+          origin: "meeting1-intake" as const,
+          external_id: a.Id,
+          Owner_Label__c: a.Asset_Owner__c?.trim() || "Client",
+          Account_Type__c: inferAccountTypeFromIntake(a),
+          Custodian__c: a.Company__c?.trim() || "—",
+          Product_Detail__c: a.Investment_Type__c ?? null,
+          Amount__c: a.Balance__c ?? a.Market_Value__c ?? null,
+          Cash_Value__c: a.Cash_Value__c ?? null,
+          Death_Benefit__c: a.Death_Benefit__c ?? null,
+          Source_Asset__c: a.Id,
+        })),
+      };
+    }
+  }
+
+  // --- 2) Fallback: Complete Opportunities on the household ---
+  // `Source_Case_Design__c = null` excludes Opps already created BY a Case
+  // Design — those would loop us. `StageName = 'Complete'` keeps it to funded
+  // accounts (real current portfolio), not in-pipeline prospects.
+  const opps = await conn.query<{
+    Id: string;
+    Name: string;
+    AccountId: string;
+    Account: { FirstName: string | null; LastName: string | null; Name: string } | null;
+    Amount: number | null;
+    RecordType: { Name: string } | null;
+  }>(
+    `SELECT Id, Name, AccountId, Account.FirstName, Account.LastName, Account.Name,
+            Amount, RecordType.Name
+     FROM Opportunity
+     WHERE AccountId IN (${accountInClause})
+       AND StageName = 'Complete'
+       AND Source_Case_Design__c = null
+     ORDER BY Amount DESC NULLS LAST
+     LIMIT 40`
+  );
+  if (opps.records.length === 0) {
+    return { origin: "none", sources: [], household_account_id: accountId };
+  }
+
+  return {
+    origin: "opportunity",
+    household_account_id: accountId,
+    sources: opps.records.map((o) => {
+      const ownerFirst =
+        o.Account?.FirstName?.trim() ||
+        firstNameByAcct.get(o.AccountId) ||
+        (o.Account?.Name?.split(" ")[0] ?? "Client");
+      const parsed = parseOpportunityName(o.Name ?? "", o.RecordType?.Name ?? "");
+      return {
+        origin: "opportunity" as const,
+        external_id: o.Id,
+        Owner_Label__c: ownerFirst,
+        Account_Type__c: parsed.account_type,
+        Custodian__c: parsed.custodian,
+        Product_Detail__c: parsed.product_detail,
+        Amount__c: o.Amount,
+        Cash_Value__c: null,
+        Death_Benefit__c: null,
+        Source_Asset__c: null,
+      };
+    }),
+  };
+}
+
+/**
+ * Bulk-create Source positions from auto-fill suggestions. Idempotent at the
+ * caller level — the route handler refuses to fill a Case Design that already
+ * has positions, so this is safe to call without checking inside.
+ */
+export async function bulkCreateSourcePositions(
+  caseDesignId: string,
+  suggestions: AutoFillSourceSuggestion[],
+): Promise<string[]> {
+  const conn = await getSFConnection();
+  const cdId = safeId(caseDesignId);
+  const ids: string[] = [];
+  for (const s of suggestions) {
+    const rec: Partial<CaseDesignPosition> & { Case_Design__c: string } = {
+      Case_Design__c: cdId,
+      Role__c: "Source",
+      Owner_Label__c: s.Owner_Label__c,
+      Account_Type__c: s.Account_Type__c,
+      Custodian__c: s.Custodian__c,
+      Product_Detail__c: s.Product_Detail__c,
+      Amount__c: s.Amount__c,
+      Cash_Value__c: s.Cash_Value__c,
+      Death_Benefit__c: s.Death_Benefit__c,
+      Source_Asset__c: s.Source_Asset__c,
+    };
+    const res = await conn.sobject("Case_Design_Position__c").create(rec as Record<string, unknown>);
+    if (!("success" in res) || !res.success) {
+      throw new Error(`Auto-fill: failed to create position: ${JSON.stringify(res)}`);
+    }
+    ids.push(res.id as string);
+  }
+  return ids;
+}
+
+/* ---------------- Auto-fill helpers ---------------- */
+
+function inferAccountTypeFromIntake(a: MeetingIntakeAsset): AccountType {
+  const t = (a.Investment_Type__c || a.Category__c || "").toLowerCase();
+  if (t.includes("roth ira")) return "Roth IRA";
+  if (t.includes("roth")) return "Roth";
+  if (t.includes("inherited")) return "Inherited IRA";
+  if (t.includes("simple ira")) return "Simple IRA";
+  if (t.includes("sep")) return "SEP IRA";
+  if (t.includes("ira")) return "IRA";
+  if (t.includes("401")) return "401k";
+  if (t.includes("403")) return "403b";
+  if (t.includes("hsa")) return "HSA";
+  if (t.includes("whole life")) return "Whole Life";
+  if (t.includes("iul")) return "IUL";
+  if (t.includes("variable annuity")) return "Variable Annuity";
+  if (t.includes("fixed indexed") || t.includes("fia")) return "Fixed Indexed Annuity";
+  if (t.includes("savings")) return "Bank Savings";
+  if (t.includes("cash")) return "Cash";
+  if (t.includes("crypto")) return "Crypto";
+  return "Other";
+}
+
+/**
+ * CW Opportunities are conventionally named "<First> <Last> <descriptor>" —
+ * e.g. "John Porter FIA IRA", "Cristi Porter NQ Brokerage". This parses the
+ * descriptor into a draft Account_Type__c + Custodian__c. The advisor still
+ * confirms in the edit panel, but a structured starting point beats blank.
+ */
+function parseOpportunityName(name: string, recordTypeName: string): {
+  account_type: AccountType;
+  custodian: string;
+  product_detail: string | null;
+} {
+  const n = name || "";
+
+  // Account type — order matters; check specific tokens before general ones.
+  let account_type: AccountType = "IRA";
+  if (/\binherited\s+ira\b/i.test(n)) account_type = "Inherited IRA";
+  else if (/\broth\s+ira\b/i.test(n)) account_type = "Roth IRA";
+  else if (/\broth\s+403b\b/i.test(n)) account_type = "Roth 403b";
+  else if (/\bsimple\s+ira\b/i.test(n)) account_type = "Simple IRA";
+  else if (/\bsep\s+ira\b/i.test(n)) account_type = "SEP IRA";
+  else if (/\bnq-?tod\b/i.test(n)) account_type = "NQ-TOD";
+  else if (/\btrust\s+nq\b/i.test(n)) account_type = "Trust NQ";
+  else if (/\biul\b/i.test(n)) account_type = "IUL";
+  else if (/\bwhole\s+life\b/i.test(n)) account_type = "Whole Life";
+  else if (/\bvariable\s+annuity\b/i.test(n)) account_type = "Variable Annuity";
+  else if (/\b(fia|fixed\s+indexed)\b/i.test(n) && recordTypeName === "Annuity")
+    account_type = "Fixed Indexed Annuity";
+  else if (/\b401k\b/i.test(n)) account_type = "401k";
+  else if (/\b403b\b/i.test(n)) account_type = "403b";
+  else if (/\bhsa\b/i.test(n)) account_type = "HSA";
+  else if (/\broth\b/i.test(n)) account_type = "Roth";
+  else if (/\b(nq|brokerage)\b/i.test(n)) account_type = "NQ";
+  else if (/\bira\b/i.test(n)) account_type = "IRA";
+  else if (recordTypeName === "Annuity") account_type = "Fixed Indexed Annuity";
+  else if (recordTypeName === "Life") account_type = "IUL";
+
+  // Custodian — well-known carriers in the CW pipeline.
+  const carriers: Array<[RegExp, string]> = [
+    [/\ballianz\b/i, "Allianz"],
+    [/\bmidland\b/i, "Midland National"],
+    [/\bathene\b/i, "Athene"],
+    [/\bf\s*&\s*g\b/i, "F&G"],
+    [/\bnationwide\b/i, "Nationwide"],
+    [/\bnorth\s+american\b/i, "North American"],
+    [/\bamerican\s+equity\b/i, "American Equity"],
+    [/\bsymetra\b/i, "Symetra"],
+    [/\bglobal\s+atlantic\b/i, "Global Atlantic"],
+    [/\bfidelity\b/i, "Fidelity"],
+    [/\b(charles\s+)?schwab\b/i, "Charles Schwab"],
+    [/\bvanguard\b/i, "Vanguard"],
+    [/\bpershing\b/i, "Pershing"],
+    [/\bassetmark\b/i, "AssetMark"],
+    [/\btrust\s*company\s*of\s*america\b/i, "TCA"],
+  ];
+  let custodian = "—";
+  for (const [rx, label] of carriers) {
+    if (rx.test(n)) {
+      custodian = label;
+      break;
+    }
+  }
+  if (custodian === "—" && recordTypeName === "AUM") custodian = "AssetMark";
+
+  return {
+    account_type,
+    custodian,
+    product_detail: n.trim() || null,
+  };
 }

@@ -11,6 +11,7 @@ interface EmptyStateProps {
   onAddSource: () => void;
   onImportIntake?: () => void;
   intakeCount: number;
+  autoFilling?: boolean;
 }
 
 export default function EmptyState({
@@ -18,47 +19,59 @@ export default function EmptyState({
   onAddSource,
   onImportIntake,
   intakeCount,
+  autoFilling = false,
 }: EmptyStateProps) {
   return (
     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
       <div className="pointer-events-auto bg-white border border-zinc-200 rounded-2xl shadow-md px-8 py-7 max-w-md text-center">
         <MoneyMapPreview />
         <h2 className="text-lg font-bold text-[#16253C] mb-1.5">
-          Build a Money Map for {householdLabel}
+          {autoFilling ? `Pulling ${householdLabel}'s accounts…` : `Build a Money Map for ${householdLabel}`}
         </h2>
         <p className="text-sm text-zinc-600 leading-relaxed mb-5">
-          Show where their money sits today, where it should go, and how it
-          moves between accounts.
+          {autoFilling
+            ? "Looking up Meeting 1 intake and Complete Opportunities in Salesforce to build your starting canvas."
+            : "Show where their money sits today, where it should go, and how it moves between accounts."}
         </p>
-        <div className="flex flex-col gap-2">
-          <button
-            type="button"
-            onClick={onAddSource}
-            className="cw-empty-cta w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] text-sm font-semibold bg-[#16253C] text-white rounded-md hover:bg-[#1E3456] transition-colors duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#C7A356] focus:ring-offset-2 motion-reduce:transition-none"
-          >
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M12 5v14M5 12h14" />
+        {autoFilling ? (
+          <div className="flex items-center justify-center gap-2 text-sm text-[#16253C] py-2">
+            <svg className="w-4 h-4 animate-spin text-[#C7A356]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.25" strokeWidth="2.5" />
+              <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
             </svg>
-            Start with a source account
-          </button>
-          {intakeCount > 0 && onImportIntake && (
+            <span className="font-medium">Auto-loading from Salesforce</span>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
             <button
               type="button"
-              onClick={onImportIntake}
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] text-sm font-semibold bg-white border border-[#C7A356] text-[#16253C] rounded-md hover:bg-[#C7A356]/10 transition-colors duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#C7A356] focus:ring-offset-2 motion-reduce:transition-none"
+              onClick={onAddSource}
+              className="cw-empty-cta w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] text-sm font-semibold bg-[#16253C] text-white rounded-md hover:bg-[#1E3456] transition-colors duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#C7A356] focus:ring-offset-2 motion-reduce:transition-none"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
+                <path d="M12 5v14M5 12h14" />
               </svg>
-              Load {intakeCount} accounts from Meeting 1 intake
+              Start with a source account
             </button>
-          )}
-          <p className="mt-1 text-[11px] text-zinc-500">
-            Click a box to edit
-            <span className="mx-1.5 text-zinc-300">·</span>
-            Drag from a source to a destination to connect them
-          </p>
-        </div>
+            {intakeCount > 0 && onImportIntake && (
+              <button
+                type="button"
+                onClick={onImportIntake}
+                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] text-sm font-semibold bg-white border border-[#C7A356] text-[#16253C] rounded-md hover:bg-[#C7A356]/10 transition-colors duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#C7A356] focus:ring-offset-2 motion-reduce:transition-none"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
+                </svg>
+                Load {intakeCount} accounts from Meeting 1 intake
+              </button>
+            )}
+            <p className="mt-1 text-[11px] text-zinc-500">
+              Click a box to edit
+              <span className="mx-1.5 text-zinc-300">·</span>
+              Drag from a source to a destination to connect them
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

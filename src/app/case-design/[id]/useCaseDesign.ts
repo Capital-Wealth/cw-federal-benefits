@@ -110,6 +110,7 @@ interface UseCaseDesignReturn {
   bundle: CaseDesignBundle;
   saving: boolean;
   lastSavedAt: Date | null;
+  refetch(): Promise<void>;
   updateParent(patch: Partial<CaseDesignParent>): Promise<void>;
   addPosition(data: Partial<CaseDesignPosition>): Promise<string>;
   updatePosition(id: string, patch: Partial<CaseDesignPosition>): Promise<void>;
@@ -453,6 +454,7 @@ export function useCaseDesign(initial: CaseDesignBundle): UseCaseDesignReturn {
     bundle,
     saving: inflight > 0,
     lastSavedAt,
+    refetch,
     updateParent,
     addPosition,
     updatePosition,

@@ -39,6 +39,7 @@ interface DiagramProps {
   selectedPositionId: string | null;
   intakeAssetCount: number;
   readOnly: boolean;
+  autoFilling?: boolean;
   onSelectNode: (id: string | null) => void;
   onAddSource: () => void;
   onLoadIntake: () => void;
@@ -64,6 +65,7 @@ export default function Diagram({
   selectedPositionId,
   intakeAssetCount,
   readOnly,
+  autoFilling = false,
   onSelectNode,
   onAddSource,
   onLoadIntake,
@@ -253,6 +255,7 @@ export default function Diagram({
         <EmptyState
           householdLabel={householdLabel}
           intakeCount={intakeAssetCount}
+          autoFilling={autoFilling}
           onAddSource={onAddSource}
           onImportIntake={intakeAssetCount > 0 ? onLoadIntake : undefined}
         />

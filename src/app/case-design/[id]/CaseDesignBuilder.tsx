@@ -6,7 +6,7 @@
  */
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AccountType,
   CaseDesignBundle,
@@ -71,6 +71,7 @@ export default function CaseDesignBuilder({
     bundle,
     saving,
     lastSavedAt,
+    refetch,
     updateParent,
     addPosition,
     updatePosition,
@@ -94,6 +95,8 @@ export default function CaseDesignBuilder({
     null | { kind: "finalize" | "confirm"; message: string; onYes: () => void }
   >(null);
   const [celebration, setCelebration] = useState<null | { childOppCount: number }>(null);
+  const [autoFilling, setAutoFilling] = useState(false);
+  const autoFillTriedRef = useRef(false);
 
   // --- Load household assets once on mount (replaces the old VaultSidebar fetch). ---
   useEffect(() => {
@@ -136,6 +139,57 @@ export default function CaseDesignBuilder({
     window.addEventListener("cw-case-design-error", onErr);
     return () => window.removeEventListener("cw-case-design-error", onErr);
   }, []);
+
+  // --- Auto-fill from Salesforce on first open ---
+  //
+  // Fires exactly once per browser session when a Draft Case Design loads with
+  // zero positions. The server route is idempotent (refuses to fill when
+  // positions already exist), so this is also safe against a double-fire on
+  // strict-mode remount. Tries Meeting 1 Intake first, then falls back to the
+  // household's Complete Opportunities — see loadAutoFillSources in sf-client.
+  useEffect(() => {
+    if (autoFillTriedRef.current) return;
+    if (locked) return;
+    if (parent.Status__c !== "Draft") return;
+    if (bundle.positions.length > 0) return;
+    autoFillTriedRef.current = true;
+    setAutoFilling(true);
+    (async () => {
+      try {
+        const res = await fetch(`/api/case-design/${parent.Id}/auto-fill`, {
+          method: "POST",
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          origin?: string;
+          created?: number;
+          error?: string;
+        };
+        if (!res.ok) throw new Error(data.error || `Auto-fill failed (${res.status})`);
+        if ((data.created ?? 0) > 0) {
+          await refetch();
+          const originLabel =
+            data.origin === "meeting1-intake"
+              ? "Meeting 1 intake"
+              : data.origin === "opportunity"
+                ? "Salesforce portfolio"
+                : "Salesforce";
+          setToast({
+            kind: "ok",
+            msg: `Auto-loaded ${data.created} source account${
+              data.created === 1 ? "" : "s"
+            } from ${originLabel}. Review and adjust each one.`,
+          });
+        }
+      } catch (e) {
+        // Surface as a non-blocking toast so the advisor knows the canvas is
+        // theirs to build manually. Don't block — empty state still works.
+        const msg = e instanceof Error ? e.message : "Auto-fill failed";
+        setToast({ kind: "err", msg });
+      } finally {
+        setAutoFilling(false);
+      }
+    })();
+  }, [parent.Id, parent.Status__c, locked, bundle.positions.length, refetch]);
 
   const householdLabel = useMemo(() => deriveHouseholdLabel(parent), [parent]);
 
@@ -380,6 +434,7 @@ export default function CaseDesignBuilder({
             selectedPositionId={selectedPositionId}
             intakeAssetCount={householdAssets.length}
             readOnly={locked}
+            autoFilling={autoFilling}
             onSelectNode={setSelectedPositionId}
             onAddSource={() => void handleAddSource()}
             onLoadIntake={() => void handleLoadIntake()}
