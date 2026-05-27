@@ -16,6 +16,10 @@ import type {
   CaseDesignEdge,
   CaseDesignAnnotation,
 } from "./types";
+import {
+  accountTypeBucket as bucketOf,
+  type AccountBucket as Bucket,
+} from "./auto-layout";
 
 /**
  * Salesforce Ids are 15 or 18 chars of `[A-Za-z0-9]`. Anything else cannot be
@@ -664,4 +668,215 @@ function parseOpportunityName(name: string, recordTypeName: string): {
     custodian,
     product_detail: n.trim() || null,
   };
+}
+
+// ---------- Suggested destinations + consolidation edges ----------
+
+/**
+ * Group the existing Source positions on a Case Design by Owner + tax bucket
+ * and create one consolidated Destination + a fan-in of edges for each
+ * consolidation group. This is the "tell me the story" pass — the advisor
+ * opens the builder and immediately sees:
+ *   - Johnathan's 4 Retirement accts → one "Johnathan FIA IRA" target,
+ *     four Rollover arrows.
+ *   - Johnathan's 4 Roths → one Roth IRA target, four Rollover arrows.
+ *   - Johnathan's NQ → one NQ Brokerage target, TOA arrow.
+ *   - Cristi's 2 Roths → one Roth IRA target, two Rollover arrows.
+ * Existing Annuities (Allianz etc.) and Life Insurance policies are left
+ * standalone (no destination, no edge) — those typically stay in place.
+ *
+ * Idempotent: refuses to run if any destinations or edges already exist.
+ */
+type ConsolidationKind = "Retirement" | "Roth" | "Non-Qualified";
+
+interface ConsolidationPlan {
+  owner: string;
+  kind: ConsolidationKind;
+  sourceIds: string[];
+  totalAmount: number;
+  destinationTemplate: {
+    Owner_Label__c: string;
+    Account_Type__c: AccountType;
+    Custodian__c: string;
+    Product_Detail__c: string;
+    Amount__c: number;
+  };
+  edgeMethod: "Rollover" | "TOA";
+}
+
+interface SuggestionResult {
+  status: "ok" | "skipped-existing" | "skipped-no-sources";
+  destinationsCreated: number;
+  edgesCreated: number;
+  groups: number;
+}
+
+export async function suggestDestinationsAndEdges(
+  caseDesignId: string,
+): Promise<SuggestionResult> {
+  const bundle = await loadCaseDesign(caseDesignId);
+  if (!bundle) throw new Error("Case Design not found");
+  if (bundle.parent.Status__c !== "Draft") {
+    throw new Error(
+      `Suggest only runs on Draft Case Designs (status: ${bundle.parent.Status__c})`,
+    );
+  }
+
+  const sources = bundle.positions.filter((p) => p.Role__c === "Source");
+  if (sources.length === 0) {
+    return {
+      status: "skipped-no-sources",
+      destinationsCreated: 0,
+      edgesCreated: 0,
+      groups: 0,
+    };
+  }
+  const existingDestinations = bundle.positions.filter(
+    (p) => p.Role__c === "Destination",
+  );
+  if (existingDestinations.length > 0 || bundle.edges.length > 0) {
+    return {
+      status: "skipped-existing",
+      destinationsCreated: 0,
+      edgesCreated: 0,
+      groups: 0,
+    };
+  }
+
+  // --- Build the consolidation plan ----------------------------------------
+  // Owner → Kind → source positions
+  const grouped = new Map<string, Map<ConsolidationKind, CaseDesignPosition[]>>();
+  for (const p of sources) {
+    const owner = (p.Owner_Label__c || "Client").trim() || "Client";
+    const kind = consolidationKindFor(bucketOf(p.Account_Type__c));
+    if (!kind) continue; // Annuities / Life / Cash / Other — left standalone
+    if (!grouped.has(owner)) grouped.set(owner, new Map());
+    const byKind = grouped.get(owner)!;
+    if (!byKind.has(kind)) byKind.set(kind, []);
+    byKind.get(kind)!.push(p);
+  }
+
+  const plans: ConsolidationPlan[] = [];
+  for (const [owner, byKind] of grouped.entries()) {
+    for (const [kind, items] of byKind.entries()) {
+      if (items.length === 0) continue;
+      const total = items.reduce(
+        (s, p) => s + (p.Amount__c ?? p.Account_Value__c ?? 0),
+        0,
+      );
+      const template = destinationTemplateFor(owner, kind, total);
+      const edgeMethod = kind === "Non-Qualified" ? "TOA" : "Rollover";
+      plans.push({
+        owner,
+        kind,
+        sourceIds: items.map((p) => p.Id),
+        totalAmount: total,
+        destinationTemplate: template,
+        edgeMethod,
+      });
+    }
+  }
+
+  if (plans.length === 0) {
+    return {
+      status: "ok",
+      destinationsCreated: 0,
+      edgesCreated: 0,
+      groups: 0,
+    };
+  }
+
+  // --- Create destinations + edges in SF ----------------------------------
+  const conn = await getSFConnection();
+  const cdId = safeId(caseDesignId);
+
+  let destinationsCreated = 0;
+  let edgesCreated = 0;
+  for (const plan of plans) {
+    const destBody: Partial<CaseDesignPosition> & { Case_Design__c: string } = {
+      Case_Design__c: cdId,
+      Role__c: "Destination",
+      Owner_Label__c: plan.destinationTemplate.Owner_Label__c,
+      Account_Type__c: plan.destinationTemplate.Account_Type__c,
+      Custodian__c: plan.destinationTemplate.Custodian__c,
+      Product_Detail__c: plan.destinationTemplate.Product_Detail__c,
+      Amount__c: plan.destinationTemplate.Amount__c,
+    };
+    const destRes = await conn
+      .sobject("Case_Design_Position__c")
+      .create(destBody as Record<string, unknown>);
+    if (!("success" in destRes) || !destRes.success) {
+      throw new Error(
+        `Suggest: failed to create destination: ${JSON.stringify(destRes)}`,
+      );
+    }
+    const destinationId = destRes.id as string;
+    destinationsCreated += 1;
+
+    for (const sourceId of plan.sourceIds) {
+      const edgeBody: Partial<CaseDesignEdge> & { Case_Design__c: string } = {
+        Case_Design__c: cdId,
+        From_Position__c: sourceId,
+        To_Position__c: destinationId,
+        Method__c: plan.edgeMethod,
+        Status__c: "Planned",
+      };
+      const edgeRes = await conn
+        .sobject("Case_Design_Edge__c")
+        .create(edgeBody as Record<string, unknown>);
+      if (!("success" in edgeRes) || !edgeRes.success) {
+        throw new Error(
+          `Suggest: failed to create edge: ${JSON.stringify(edgeRes)}`,
+        );
+      }
+      edgesCreated += 1;
+    }
+  }
+
+  return {
+    status: "ok",
+    destinationsCreated,
+    edgesCreated,
+    groups: plans.length,
+  };
+}
+
+function consolidationKindFor(b: Bucket): ConsolidationKind | null {
+  if (b === "Retirement") return "Retirement";
+  if (b === "Roth") return "Roth";
+  if (b === "Non-Qualified") return "Non-Qualified";
+  return null;
+}
+
+function destinationTemplateFor(
+  owner: string,
+  kind: ConsolidationKind,
+  total: number,
+): ConsolidationPlan["destinationTemplate"] {
+  switch (kind) {
+    case "Retirement":
+      return {
+        Owner_Label__c: owner,
+        Account_Type__c: "Fixed Indexed Annuity",
+        Custodian__c: "AssetMark",
+        Product_Detail__c: `${owner} FIA IRA — Consolidation`,
+        Amount__c: total,
+      };
+    case "Roth":
+      return {
+        Owner_Label__c: owner,
+        Account_Type__c: "Roth IRA",
+        Custodian__c: "AssetMark",
+        Product_Detail__c: `${owner} Roth IRA — Consolidation`,
+        Amount__c: total,
+      };
+    case "Non-Qualified":
+      return {
+        Owner_Label__c: owner,
+        Account_Type__c: "NQ",
+        Custodian__c: "AssetMark",
+        Product_Detail__c: `${owner} NQ Brokerage — Consolidation`,
+        Amount__c: total,
+      };
+  }
 }

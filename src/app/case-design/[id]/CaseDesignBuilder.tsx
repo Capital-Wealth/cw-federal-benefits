@@ -98,6 +98,7 @@ export default function CaseDesignBuilder({
   const [celebration, setCelebration] = useState<null | { childOppCount: number }>(null);
   const [autoFilling, setAutoFilling] = useState(false);
   const autoFillTriedRef = useRef(false);
+  const suggestTriedRef = useRef(false);
 
   // --- Load household assets once on mount (replaces the old VaultSidebar fetch). ---
   useEffect(() => {
@@ -191,6 +192,62 @@ export default function CaseDesignBuilder({
       }
     })();
   }, [parent.Id, parent.Status__c, locked, bundle.positions.length, refetch]);
+
+  // --- Suggest destinations + draw consolidation edges ---
+  //
+  // Once sources are loaded, fire once if destinations and edges are both
+  // empty. Server endpoint is idempotent (refuses to run if destinations or
+  // edges exist), so this is also safe against strict-mode double-mount.
+  // Skipped if the advisor has already drawn anything.
+  useEffect(() => {
+    if (suggestTriedRef.current) return;
+    if (locked) return;
+    if (parent.Status__c !== "Draft") return;
+    if (autoFilling) return; // wait for auto-fill to finish
+    const sourceCount = bundle.positions.filter((p) => p.Role__c === "Source").length;
+    const destCount = bundle.positions.filter((p) => p.Role__c === "Destination").length;
+    if (sourceCount === 0) return;
+    if (destCount > 0) return;
+    if (bundle.edges.length > 0) return;
+    suggestTriedRef.current = true;
+    (async () => {
+      try {
+        const res = await fetch(`/api/case-design/${parent.Id}/suggest-destinations`, {
+          method: "POST",
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          status?: string;
+          destinationsCreated?: number;
+          edgesCreated?: number;
+          groups?: number;
+          error?: string;
+        };
+        if (!res.ok) throw new Error(data.error || `Suggest failed (${res.status})`);
+        if ((data.destinationsCreated ?? 0) > 0) {
+          await refetch();
+          setToast({
+            kind: "ok",
+            msg: `Drafted ${data.destinationsCreated} destination${
+              data.destinationsCreated === 1 ? "" : "s"
+            } and ${data.edgesCreated} consolidation arrow${
+              data.edgesCreated === 1 ? "" : "s"
+            }. Review and adjust.`,
+          });
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Suggest failed";
+        setToast({ kind: "err", msg });
+      }
+    })();
+  }, [
+    parent.Id,
+    parent.Status__c,
+    locked,
+    autoFilling,
+    bundle.positions,
+    bundle.edges.length,
+    refetch,
+  ]);
 
   const householdLabel = useMemo(() => deriveHouseholdLabel(parent), [parent]);
 
