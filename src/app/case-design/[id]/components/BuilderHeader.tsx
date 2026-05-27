@@ -21,6 +21,14 @@ const PLAN_TYPES = [
 
 type PlanType = (typeof PLAN_TYPES)[number];
 
+/** CW Lightning host. Hardcoded — the production org is permanent. */
+const SF_LIGHTNING_HOST = "https://capitalwealth.lightning.force.com";
+
+/** Compose the Lightning URL for any record Id. */
+function sfRecordUrl(recordId: string, sobject = "Account"): string {
+  return `${SF_LIGHTNING_HOST}/lightning/r/${sobject}/${recordId}/view`;
+}
+
 interface BuilderHeaderProps {
   parent: CaseDesignParent;
   householdLabel: string;
@@ -66,6 +74,9 @@ export default function BuilderHeader(props: BuilderHeaderProps) {
     (parent.Plan_Type__c || "").split(";").filter(Boolean) as PlanType[]
   );
 
+  const householdSfUrl = parent.Account__c ? sfRecordUrl(parent.Account__c) : null;
+  const caseDesignSfUrl = sfRecordUrl(parent.Id, "Case_Design__c");
+
   return (
     <header className="sticky top-0 z-40 h-16 bg-[#16253C] text-white border-b-2 border-[#C7A356] px-5 flex items-center justify-between gap-4">
       {/* Left: brand + title */}
@@ -76,8 +87,24 @@ export default function BuilderHeader(props: BuilderHeaderProps) {
           className="h-4 brightness-0 invert flex-shrink-0"
         />
         <div className="min-w-0 hidden sm:block">
-          <h1 className="text-base font-bold leading-tight truncate">
-            Money Map for {householdLabel}
+          <h1 className="text-base font-bold leading-tight truncate flex items-center gap-1.5">
+            <span className="truncate">Money Map for {householdLabel}</span>
+            {householdSfUrl && (
+              <a
+                href={householdSfUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={`Open ${householdLabel} household in Salesforce`}
+                aria-label={`Open ${householdLabel} household in Salesforce`}
+                className="inline-flex items-center justify-center w-6 h-6 rounded-md text-[#C7A356] hover:text-white hover:bg-white/10 cursor-pointer transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[#C7A356] focus:ring-offset-1 focus:ring-offset-[#16253C] motion-reduce:transition-none"
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                  <polyline points="15 3 21 3 21 9" />
+                  <line x1="10" y1="14" x2="21" y2="3" />
+                </svg>
+              </a>
+            )}
           </h1>
           <p className="text-[11px] text-[#C7A356] leading-tight truncate">{parent.Name}</p>
         </div>
@@ -109,6 +136,9 @@ export default function BuilderHeader(props: BuilderHeaderProps) {
           advancedOpen={advancedOpen}
           locked={locked}
           hasPdf={!!parent.PDF_ContentVersion_Id__c}
+          householdSfUrl={householdSfUrl}
+          caseDesignSfUrl={caseDesignSfUrl}
+          householdLabel={householdLabel}
         />
 
         <PrimaryCTA
@@ -298,6 +328,9 @@ function OverflowMenu({
   advancedOpen,
   locked,
   hasPdf,
+  householdSfUrl,
+  caseDesignSfUrl,
+  householdLabel,
 }: {
   onGeneratePdf: () => void;
   onSoftFinalize: () => void;
@@ -305,6 +338,9 @@ function OverflowMenu({
   advancedOpen: boolean;
   locked: boolean;
   hasPdf: boolean;
+  householdSfUrl: string | null;
+  caseDesignSfUrl: string;
+  householdLabel: string;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -334,7 +370,24 @@ function OverflowMenu({
         </svg>
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-60 bg-white border border-zinc-200 rounded-lg shadow-xl py-1.5 z-50">
+        <div className="absolute right-0 top-full mt-2 w-64 bg-white border border-zinc-200 rounded-lg shadow-xl py-1.5 z-50">
+          {householdSfUrl && (
+            <>
+              <MenuLink
+                href={householdSfUrl}
+                label={`Open ${householdLabel} in Salesforce`}
+                hint="Verify accounts on the Household record"
+                onClick={() => setOpen(false)}
+              />
+              <MenuLink
+                href={caseDesignSfUrl}
+                label="Open this Case Design in Salesforce"
+                hint="View the parent record + child positions"
+                onClick={() => setOpen(false)}
+              />
+              <div className="my-1 border-t border-zinc-100" />
+            </>
+          )}
           <MenuItem
             onClick={() => {
               onGeneratePdf();
@@ -389,6 +442,38 @@ function MenuItem({
       <div className="text-sm font-medium text-zinc-900">{label}</div>
       <div className="text-[11px] text-zinc-500">{hint}</div>
     </button>
+  );
+}
+
+function MenuLink({
+  href,
+  label,
+  hint,
+  onClick,
+}: {
+  href: string;
+  label: string;
+  hint: string;
+  onClick?: () => void;
+}) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={onClick}
+      className="block w-full text-left px-3 py-2 hover:bg-zinc-100 cursor-pointer transition-colors duration-200 motion-reduce:transition-none"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-sm font-medium text-zinc-900 truncate">{label}</div>
+        <svg className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+          <polyline points="15 3 21 3 21 9" />
+          <line x1="10" y1="14" x2="21" y2="3" />
+        </svg>
+      </div>
+      <div className="text-[11px] text-zinc-500">{hint}</div>
+    </a>
   );
 }
 
