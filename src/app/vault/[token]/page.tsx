@@ -134,7 +134,8 @@ export default function VaultDashboard({ params }: { params: Promise<{ token: st
                 <div className="min-w-0">
                   <p className="font-medium text-zinc-900 truncate">{d.fileName}</p>
                   <p className="text-xs text-zinc-500">
-                    {d.mime} &middot; {(d.sizeBytes / 1024).toFixed(1)} KB &middot;
+                    Uploaded {new Date(d.uploadedAt).toLocaleString()} &middot;
+                    {" "}{d.mime} &middot; {(d.sizeBytes / 1024).toFixed(1)} KB &middot;
                     <span className="text-emerald-600 font-medium"> {d.scanStatus}</span> &middot;
                     SHA-256 {d.sha256.slice(0, 12)}...
                   </p>
