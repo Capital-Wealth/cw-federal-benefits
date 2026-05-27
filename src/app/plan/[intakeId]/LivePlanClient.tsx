@@ -121,6 +121,8 @@ function buildInitialState(intake: Record<string, unknown>): PlanState {
     Desired_Retirement_Date__c: str(intake.Desired_Retirement_Date__c),
     Sick_Leave_Hours_To_Date__c: num(intake.Sick_Leave_Hours_To_Date__c),
     Retirement_System__c: str(intake.Retirement_System__c) || "FERS",
+    Employee_Category__c: str(intake.Employee_Category__c) || "None",
+    Is_Postal_Employee__c: Boolean(intake.Is_Postal_Employee__c),
     Survivor_Benefit_FERS__c: str(intake.Survivor_Benefit_FERS__c) || "50%",
     Expected_Salary_Increase__c: num(intake.Expected_Salary_Increase__c),
     COLA_Adjustment__c: num(intake.COLA_Adjustment__c),

@@ -14,6 +14,8 @@ export interface PlanState {
   Desired_Retirement_Date__c: string;
   Sick_Leave_Hours_To_Date__c: number;
   Retirement_System__c: string;
+  Employee_Category__c: string; // None | Law Enforcement | Firefighter | Air Traffic Controller
+  Is_Postal_Employee__c: boolean;
   Survivor_Benefit_FERS__c: string;
   Expected_Salary_Increase__c: number; // whole percent
   COLA_Adjustment__c: number; // whole percent
@@ -52,6 +54,19 @@ function mapRetirementSystem(v: string): "FERS" | "CSRS" | "FERS_TRANSFER" | "CS
   if (u.includes("OFFSET")) return "CSRS_OFFSET";
   if (u.includes("CSRS")) return "CSRS";
   return "FERS";
+}
+
+function mapEmployeeType(
+  category: string | undefined,
+  isPostal: boolean | undefined,
+): "REGULAR" | "LEO" | "FIREFIGHTER" | "ATC" | "POSTAL" | "CONGRESSIONAL" {
+  const cat = (category ?? "").toUpperCase();
+  if (cat.includes("LAW")) return "LEO";
+  if (cat.includes("FIRE")) return "FIREFIGHTER";
+  if (cat.includes("AIR TRAFFIC") || cat === "ATC") return "ATC";
+  if (cat.includes("CONGRESS")) return "CONGRESSIONAL";
+  if (isPostal) return "POSTAL";
+  return "REGULAR";
 }
 
 function mapSurvivor(v: string): SurvivorElection {
@@ -101,7 +116,7 @@ export function buildReportInput(
     employment: {
       serviceComputationDate: scd,
       retirementSystem: mapRetirementSystem(state.Retirement_System__c),
-      employeeType: "REGULAR",
+      employeeType: mapEmployeeType(state.Employee_Category__c, state.Is_Postal_Employee__c),
       currentAnnualSalary: state.Current_Annual_Salary__c,
       annualSalaryIncreaseRate: state.Expected_Salary_Increase__c / 100,
       creditableServiceYears: civilian.years,
