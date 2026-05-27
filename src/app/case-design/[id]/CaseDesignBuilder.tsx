@@ -19,6 +19,7 @@ import AccountColumn from "./components/AccountColumn";
 import EditPanel from "./components/EditPanel";
 import AdvancedDrawer, { AdvancedDrawerButton } from "./components/AdvancedDrawer";
 import Celebrate from "./components/Celebrate";
+import HouseholdSummaryStrip from "./components/HouseholdSummaryStrip";
 
 type PlanType =
   | "Rollover"
@@ -372,6 +373,9 @@ export default function CaseDesignBuilder({
         onToggleAdvanced={() => setAdvancedOpen((x) => !x)}
         advancedOpen={advancedOpen}
       />
+
+      {/* Household summary strip — instant context for "what are we working with" */}
+      <HouseholdSummaryStrip bundle={bundle} householdLabel={householdLabel} />
 
       {/* State banners */}
       {parent.Status__c === "Finalized" && !locked && (

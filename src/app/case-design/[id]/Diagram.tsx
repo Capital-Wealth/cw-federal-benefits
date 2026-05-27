@@ -28,7 +28,11 @@ import type {
   CaseDesignPosition,
   EdgeMethod,
 } from "@/lib/case-design/types";
-import { layoutDiagram, methodLabel } from "@/lib/case-design/auto-layout";
+import {
+  layoutDiagram,
+  methodLabel,
+  type ColumnLabel,
+} from "@/lib/case-design/auto-layout";
 import { MoneyMapNode, type MoneyMapNodeData } from "./MoneyMapNode";
 import EmptyState from "./components/EmptyState";
 import EdgeMethodPicker from "./components/EdgeMethodPicker";
@@ -50,7 +54,34 @@ interface DiagramProps {
   addEdge: (data: Partial<CaseDesignEdge>) => Promise<string>;
 }
 
-const nodeTypes: NodeTypes = { moneyMap: MoneyMapNode };
+/**
+ * Column-label node — non-interactive header that sits above each owner
+ * column / the destinations column. Renders inside the react-flow viewport so
+ * it pans and zooms with the canvas — no overlay sync needed.
+ */
+type ColumnLabelData = { label: string; sublabel: string; kind: "source" | "destination" };
+function ColumnLabelNode({ data }: { data: ColumnLabelData }) {
+  const isDest = data.kind === "destination";
+  return (
+    <div
+      className={`pointer-events-none select-none px-3 py-1.5 rounded-full border text-center ${
+        isDest
+          ? "bg-[#C7A356]/15 border-[#C7A356]/50 text-[#16253C]"
+          : "bg-[#16253C] border-[#16253C] text-white"
+      }`}
+      style={{ width: 200 }}
+    >
+      <div className={`text-xs font-bold leading-tight truncate ${isDest ? "" : ""}`}>
+        {data.label}
+      </div>
+      <div className={`text-[10px] leading-tight truncate ${isDest ? "text-[#16253C]/70" : "text-[#C7A356]"}`}>
+        {data.sublabel}
+      </div>
+    </div>
+  );
+}
+
+const nodeTypes: NodeTypes = { moneyMap: MoneyMapNode, columnLabel: ColumnLabelNode };
 
 interface PendingConnection {
   fromId: string;
@@ -80,19 +111,29 @@ export default function Diagram({
     [bundle.positions, bundle.edges]
   );
 
-  const nodes: RFNode<MoneyMapNodeData>[] = useMemo(
-    () =>
-      layout.nodes.map((n) => ({
-        id: n.id,
-        type: "moneyMap",
-        position: { x: n.x, y: n.y },
-        data: { position: n.position },
-        draggable: !readOnly,
-        selectable: true,
-        selected: n.id === selectedPositionId,
-      })),
-    [layout.nodes, readOnly, selectedPositionId]
-  );
+  const nodes: RFNode[] = useMemo(() => {
+    const accountNodes: RFNode<MoneyMapNodeData>[] = layout.nodes.map((n) => ({
+      id: n.id,
+      type: "moneyMap",
+      position: { x: n.x, y: n.y },
+      data: { position: n.position },
+      draggable: !readOnly,
+      selectable: true,
+      selected: n.id === selectedPositionId,
+    }));
+    // Column-header labels sit just above the top of each column. Indexed by
+    // the column's source/destination position so they pan with the canvas.
+    const headerNodes: RFNode[] = layout.columnLabels.map((c: ColumnLabel) => ({
+      id: `column-label-${c.kind}-${c.label}`,
+      type: "columnLabel",
+      position: { x: c.x, y: 8 },
+      data: { label: c.label, sublabel: c.sublabel, kind: c.kind },
+      draggable: false,
+      selectable: false,
+      focusable: false,
+    }));
+    return [...headerNodes, ...accountNodes] as RFNode[];
+  }, [layout.nodes, layout.columnLabels, readOnly, selectedPositionId]);
 
   const edges: RFEdge[] = useMemo(
     () =>
@@ -111,9 +152,12 @@ export default function Diagram({
     [layout.edges]
   );
 
-  const onNodeDragStop: OnNodeDrag<RFNode<MoneyMapNodeData>> = useCallback(
+  const onNodeDragStop: OnNodeDrag<RFNode> = useCallback(
     (_event, node) => {
       if (readOnly) return;
+      // Column-label header nodes are draggable:false so they can't reach
+      // this callback in practice, but guard anyway.
+      if (node.type !== "moneyMap") return;
       void updatePosition(node.id, {
         Position_X__c: node.position.x,
         Position_Y__c: node.position.y,
@@ -160,7 +204,10 @@ export default function Diagram({
   );
 
   const onNodeClick = useCallback(
-    (_event: React.MouseEvent, node: RFNode<MoneyMapNodeData>) => {
+    (_event: React.MouseEvent, node: RFNode) => {
+      // Column-label headers are presentational only — ignore clicks on them
+      // so the EditPanel doesn't try to load a position that doesn't exist.
+      if (node.type !== "moneyMap") return;
       onSelectNode(node.id);
     },
     [onSelectNode]

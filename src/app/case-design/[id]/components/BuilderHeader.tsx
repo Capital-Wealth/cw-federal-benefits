@@ -461,17 +461,17 @@ function PrimaryCTA({
   }
 
   const message = !hasSources
-    ? "Add a source to continue"
+    ? "Add a source"
     : !hasDestinations
-      ? "Add a destination to continue"
-      : "Add accounts to continue";
+      ? "Add destinations"
+      : "Add accounts";
 
   return (
     <button
       type="button"
       disabled
       title="Add at least one source and one destination on the canvas."
-      className="inline-flex items-center gap-2 px-4 py-2 min-h-[44px] text-xs font-semibold bg-white/15 text-white border border-[#C7A356]/40 rounded-md cursor-not-allowed"
+      className="inline-flex items-center gap-2 px-4 py-2 min-h-[44px] text-xs font-semibold whitespace-nowrap bg-white/15 text-white border border-[#C7A356]/40 rounded-md cursor-not-allowed"
     >
       <svg className="w-3.5 h-3.5 text-[#C7A356]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M5 12l5 5L20 7" opacity="0.35" />

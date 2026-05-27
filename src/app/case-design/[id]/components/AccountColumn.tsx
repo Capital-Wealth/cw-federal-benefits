@@ -1,18 +1,29 @@
 /**
- * AccountColumn — left rail (Sources) or right rail (Destinations). Lists the
- * positions of the given role as compact cards, surfaces an intake-loader
- * banner on the Sources column when Meeting 1 assets are available, and
- * exposes "+ Add" / per-card edit / per-card replace actions.
+ * AccountColumn — left rail (Sources) or right rail (Destinations). Renders
+ * positions in a collapsible Owner → Bucket → Account tree so a 14-account
+ * household isn't an undifferentiated flat list. Each level shows its own
+ * subtotal so the advisor can navigate by money, not by individual name.
+ *
+ * Sources column shows the Meeting 1 intake importer banner when assets are
+ * available but not yet linked. Destinations column omits the tree (one
+ * advisor-designed bucket) and just lists cards directly.
  */
 "use client";
 
+import { useMemo, useState } from "react";
 import type {
   AccountType,
   CaseDesignPosition,
   PositionRole,
 } from "@/lib/case-design/types";
 import type { MeetingIntakeAsset } from "@/lib/case-design/sf-client";
-import { formatValueDisplay, formatFeeBadge } from "@/lib/case-design/auto-layout";
+import {
+  accountTypeBucket,
+  formatFeeBadge,
+  formatMoneyCompact,
+  formatValueDisplay,
+  type AccountBucket,
+} from "@/lib/case-design/auto-layout";
 
 interface AccountColumnProps {
   role: "Source" | "Destination";
@@ -20,7 +31,7 @@ interface AccountColumnProps {
   selectedPositionId: string | null;
   pickingReplacementFor: CaseDesignPosition | null;
   intakeAssets: MeetingIntakeAsset[];
-  intakeLoaded: number; // how many sources are already linked to intake
+  intakeLoaded: number;
   readOnly: boolean;
   onSelect: (id: string) => void;
   onAdd: () => void;
@@ -45,9 +56,6 @@ export default function AccountColumn(props: AccountColumnProps) {
 
   const isSource = role === "Source";
   const intakeAvailable = isSource && intakeAssets.length > 0 && intakeLoaded < intakeAssets.length;
-
-  // When the user has clicked a source in pick-replacement mode, the destination
-  // column shows a "Replace this destination" affordance on each card.
   const replacementMode = !isSource && pickingReplacementFor != null;
 
   return (
@@ -105,19 +113,32 @@ export default function AccountColumn(props: AccountColumnProps) {
           </div>
         )}
 
-        {positions.map((p) => (
-          <AccountCard
-            key={p.Id}
-            position={p}
-            selected={selectedPositionId === p.Id}
-            replacementMode={replacementMode}
-            sourceBeingReplaced={pickingReplacementFor}
-            onSelect={() => onSelect(p.Id)}
-            onPickAsReplacement={() => {
-              if (pickingReplacementFor) onPickReplacement(p.Id, pickingReplacementFor.Id);
-            }}
+        {/* Sources: Owner → Bucket tree. Destinations: flat list. */}
+        {positions.length > 0 && isSource && (
+          <OwnerBucketTree
+            positions={positions}
+            selectedPositionId={selectedPositionId}
+            onSelect={onSelect}
           />
-        ))}
+        )}
+
+        {positions.length > 0 && !isSource && (
+          <div className="space-y-2">
+            {positions.map((p) => (
+              <AccountCard
+                key={p.Id}
+                position={p}
+                selected={selectedPositionId === p.Id}
+                replacementMode={replacementMode}
+                sourceBeingReplaced={pickingReplacementFor}
+                onSelect={() => onSelect(p.Id)}
+                onPickAsReplacement={() => {
+                  if (pickingReplacementFor) onPickReplacement(p.Id, pickingReplacementFor.Id);
+                }}
+              />
+            ))}
+          </div>
+        )}
 
         {!readOnly && (
           <button
@@ -136,7 +157,171 @@ export default function AccountColumn(props: AccountColumnProps) {
   );
 }
 
-/* ---------------- Account card ---------------- */
+/* ---------------- Owner → Bucket tree (sources only) ---------------- */
+
+interface OwnerNode {
+  owner: string;
+  total: number;
+  count: number;
+  buckets: Array<{
+    bucket: AccountBucket;
+    items: CaseDesignPosition[];
+    total: number;
+  }>;
+}
+
+function OwnerBucketTree({
+  positions,
+  selectedPositionId,
+  onSelect,
+}: {
+  positions: CaseDesignPosition[];
+  selectedPositionId: string | null;
+  onSelect: (id: string) => void;
+}) {
+  const tree = useMemo(() => buildTree(positions), [positions]);
+
+  // All owner groups expanded by default — the value is the breakdown,
+  // not the hiding.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const toggle = (key: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
+  return (
+    <div className="space-y-3">
+      {tree.map((owner) => {
+        const isCollapsed = collapsed.has(`owner:${owner.owner}`);
+        return (
+          <div key={owner.owner} className="rounded-lg border border-zinc-200 bg-white overflow-hidden">
+            <button
+              type="button"
+              onClick={() => toggle(`owner:${owner.owner}`)}
+              aria-expanded={!isCollapsed}
+              className="w-full flex items-center justify-between gap-2 px-3 py-2 bg-gradient-to-r from-[#16253C] to-[#1E3456] text-white cursor-pointer hover:from-[#1E3456] hover:to-[#26405E] transition-colors duration-200 motion-reduce:transition-none"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <Chevron expanded={!isCollapsed} />
+                <span className="text-sm font-bold truncate">{owner.owner}</span>
+                <span className="text-[10px] text-white/60">
+                  {owner.count} acct{owner.count === 1 ? "" : "s"}
+                </span>
+              </div>
+              <span className="text-xs font-bold text-[#C7A356] tabular-nums whitespace-nowrap">
+                {formatMoneyCompact(owner.total)}
+              </span>
+            </button>
+
+            {!isCollapsed && (
+              <div className="px-2 py-1.5 space-y-1.5">
+                {owner.buckets.map(({ bucket, items, total }) => (
+                  <BucketGroup
+                    key={bucket}
+                    bucketLabel={bucket}
+                    items={items}
+                    total={total}
+                    selectedPositionId={selectedPositionId}
+                    onSelect={onSelect}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function BucketGroup({
+  bucketLabel,
+  items,
+  total,
+  selectedPositionId,
+  onSelect,
+}: {
+  bucketLabel: AccountBucket;
+  items: CaseDesignPosition[];
+  total: number;
+  selectedPositionId: string | null;
+  onSelect: (id: string) => void;
+}) {
+  const bucketColor = bucketStripeClass(bucketLabel);
+  return (
+    <div className="rounded-md">
+      <div className="flex items-center justify-between gap-2 px-2 py-1 text-[10px] font-semibold tracking-wider uppercase">
+        <div className="flex items-center gap-1.5">
+          <span className={`inline-block w-1.5 h-3 rounded-sm ${bucketColor}`} aria-hidden="true" />
+          <span className="text-zinc-700">{bucketLabel}</span>
+          <span className="text-zinc-400 font-medium normal-case">({items.length})</span>
+        </div>
+        <span className="text-zinc-700 tabular-nums">{formatMoneyCompact(total)}</span>
+      </div>
+      <div className="space-y-1">
+        {items.map((p) => (
+          <CompactRow
+            key={p.Id}
+            position={p}
+            selected={selectedPositionId === p.Id}
+            onSelect={() => onSelect(p.Id)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CompactRow({
+  position,
+  selected,
+  onSelect,
+}: {
+  position: CaseDesignPosition;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const p = position;
+  const value = formatValueDisplay(p);
+  const accountTypeDisplay =
+    p.Account_Type__c === "Other" && p.Account_Type_Other__c
+      ? p.Account_Type_Other__c
+      : (p.Account_Type__c as AccountType);
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`cw-hover-lift w-full text-left px-2 py-1.5 rounded-md border text-[12px] cursor-pointer transition-colors duration-200 motion-reduce:transition-none focus:outline-none focus:ring-2 focus:ring-[#C7A356] focus:ring-offset-1 ${
+        selected
+          ? "border-[#C7A356] bg-[#C7A356]/10 ring-2 ring-[#C7A356]/30"
+          : "border-zinc-100 bg-zinc-50 hover:border-zinc-300 hover:bg-white"
+      }`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="text-[12px] font-semibold text-[#16253C] truncate">
+            {accountTypeDisplay}
+            {p.Custodian__c && p.Custodian__c !== "—" && (
+              <span className="text-zinc-500 font-normal"> · {p.Custodian__c}</span>
+            )}
+          </div>
+          {p.Product_Detail__c && (
+            <div className="text-[10px] text-zinc-500 truncate">{p.Product_Detail__c}</div>
+          )}
+        </div>
+        <div className="text-[12px] font-bold text-zinc-900 tabular-nums whitespace-nowrap">
+          {value}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+/* ---------------- Destination card (kept from previous design) ---------------- */
 
 function AccountCard({
   position,
@@ -219,12 +404,87 @@ function AccountCard({
   );
 }
 
-/* ---------------- Help tooltip ---------------- */
+/* ---------------- Helpers ---------------- */
+
+function buildTree(positions: CaseDesignPosition[]): OwnerNode[] {
+  const ownerMap = new Map<string, CaseDesignPosition[]>();
+  for (const p of positions) {
+    const key = (p.Owner_Label__c || "Client").trim() || "Client";
+    if (!ownerMap.has(key)) ownerMap.set(key, []);
+    ownerMap.get(key)!.push(p);
+  }
+  const owners: OwnerNode[] = [];
+  for (const [owner, list] of ownerMap.entries()) {
+    const bucketMap = new Map<AccountBucket, CaseDesignPosition[]>();
+    for (const p of list) {
+      const b = accountTypeBucket(p.Account_Type__c);
+      if (!bucketMap.has(b)) bucketMap.set(b, []);
+      bucketMap.get(b)!.push(p);
+    }
+    const buckets = Array.from(bucketMap.entries()).map(([bucket, items]) => {
+      items.sort(
+        (a, b) =>
+          (b.Amount__c ?? b.Account_Value__c ?? 0) -
+          (a.Amount__c ?? a.Account_Value__c ?? 0),
+      );
+      const total = items.reduce(
+        (s, p) => s + (p.Amount__c ?? p.Account_Value__c ?? 0),
+        0,
+      );
+      return { bucket, items, total };
+    });
+    const total = list.reduce(
+      (s, p) => s + (p.Amount__c ?? p.Account_Value__c ?? 0),
+      0,
+    );
+    owners.push({ owner, total, count: list.length, buckets });
+  }
+  owners.sort((a, b) => b.total - a.total);
+  return owners;
+}
+
+function bucketStripeClass(b: AccountBucket): string {
+  switch (b) {
+    case "Annuities":
+      return "bg-amber-500";
+    case "Retirement":
+      return "bg-blue-600";
+    case "Roth":
+      return "bg-emerald-600";
+    case "Non-Qualified":
+      return "bg-violet-600";
+    case "Life Insurance":
+      return "bg-rose-600";
+    case "Cash & Equivalents":
+      return "bg-slate-500";
+    default:
+      return "bg-zinc-400";
+  }
+}
+
+function Chevron({ expanded }: { expanded: boolean }) {
+  return (
+    <svg
+      className={`w-3 h-3 text-white/80 transition-transform duration-200 motion-reduce:transition-none ${
+        expanded ? "rotate-90" : ""
+      }`}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M9 6l6 6-6 6" />
+    </svg>
+  );
+}
 
 function ColumnHelpTooltip({ role }: { role: PositionRole }) {
   const hint =
     role === "Source"
-      ? "Where the money currently sits — accounts the client owns today."
+      ? "Where the money currently sits — grouped by owner, then account type."
       : "Where the money should go — your proposed allocation.";
   return (
     <span className="relative group/tt inline-flex">
