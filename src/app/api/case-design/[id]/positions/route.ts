@@ -48,6 +48,13 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const { id } = await ctx.params;
   const body = (await req.json()) as Partial<CaseDesignPosition>;
   const safe = pick(body);
+  // Owner_Label__c + Custodian__c are required=true on Case_Design_Position__c.
+  // Defensive: never let an empty/whitespace-only value reach SF — it would
+  // surface as REQUIRED_FIELD_MISSING the moment the user clicks "Add source".
+  const owner = typeof safe.Owner_Label__c === "string" ? safe.Owner_Label__c.trim() : "";
+  if (!owner) safe.Owner_Label__c = "Client";
+  const custodian = typeof safe.Custodian__c === "string" ? safe.Custodian__c.trim() : "";
+  if (!custodian) safe.Custodian__c = "—";
   try {
     const newId = await positions.create(id, safe);
     return Response.json({ id: newId });

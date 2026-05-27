@@ -150,6 +150,58 @@ body {
              cw-check-fade-out 1.6s ease-out 1.2s forwards;
 }
 
+/* Empty-state mini Money Map preview — loops so the canvas feels alive. */
+@keyframes cw-mm-box-in {
+  0%   { opacity: 0; transform: translateX(-8px) scale(0.94); }
+  18%  { opacity: 1; transform: translateX(0)    scale(1); }
+  82%  { opacity: 1; transform: translateX(0)    scale(1); }
+  100% { opacity: 0; transform: translateX(8px)  scale(0.94); }
+}
+@keyframes cw-mm-edge-draw {
+  0%   { stroke-dashoffset: 80; opacity: 0; }
+  18%  { stroke-dashoffset: 80; opacity: 0; }
+  45%  { stroke-dashoffset: 0;  opacity: 1; }
+  85%  { stroke-dashoffset: 0;  opacity: 1; }
+  100% { stroke-dashoffset: 0;  opacity: 0; }
+}
+@keyframes cw-mm-dot-glow {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 1; }
+}
+.cw-mm-preview .cw-mm-src,
+.cw-mm-preview .cw-mm-dest,
+.cw-mm-preview .cw-mm-edge {
+  animation-duration: 4.2s;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  animation-iteration-count: infinite;
+}
+.cw-mm-preview .cw-mm-src   { animation-name: cw-mm-box-in; }
+.cw-mm-preview .cw-mm-dest  { animation-name: cw-mm-box-in; }
+.cw-mm-preview .cw-mm-edge  {
+  animation-name: cw-mm-edge-draw;
+  stroke-dasharray: 80;
+}
+.cw-mm-preview .cw-mm-src-1  { animation-delay: 0s; }
+.cw-mm-preview .cw-mm-src-2  { animation-delay: 0.18s; }
+.cw-mm-preview .cw-mm-src-3  { animation-delay: 0.36s; }
+.cw-mm-preview .cw-mm-edge-1 { animation-delay: 0.55s; }
+.cw-mm-preview .cw-mm-edge-2 { animation-delay: 0.72s; }
+.cw-mm-preview .cw-mm-edge-3 { animation-delay: 0.88s; }
+.cw-mm-preview .cw-mm-dest-1 { animation-delay: 1.05s; }
+.cw-mm-preview .cw-mm-dest-2 { animation-delay: 1.22s; }
+.cw-mm-preview .cw-mm-dot    {
+  animation: cw-mm-dot-glow 1.8s ease-in-out infinite;
+}
+
+/* Subtle attention pulse on the empty-state primary CTA */
+@keyframes cw-empty-cta-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(199, 163, 86, 0); }
+  50%      { box-shadow: 0 0 0 6px rgba(199, 163, 86, 0.28); }
+}
+.cw-empty-cta {
+  animation: cw-empty-cta-pulse 2.6s ease-in-out infinite;
+}
+
 /* Reduce-motion respect */
 @media (prefers-reduced-motion: reduce) {
   .cw-cta-ready,
@@ -160,8 +212,100 @@ body {
   .cw-slide-in-right,
   .cw-toast-up,
   .cw-confetti-dot,
-  .cw-check-celebrate {
+  .cw-check-celebrate,
+  .cw-mm-preview .cw-mm-src,
+  .cw-mm-preview .cw-mm-dest,
+  .cw-mm-preview .cw-mm-edge,
+  .cw-mm-preview .cw-mm-dot,
+  .cw-empty-cta {
     animation: none !important;
   }
   .cw-hover-lift { transition: none !important; }
+}
+
+/* ---- CW Planning Workbench (planner) ---- */
+.planner-app {
+  /* Palette */
+  --cw-primary: #0F766E;
+  --cw-primary-hover: #0E6359;
+  --cw-primary-soft: #CCFBF1;
+  --cw-accent: #0369A1;
+  --cw-essential-fixed: #0F766E;
+  --cw-essential-variable: #14B8A6;
+  --cw-discretionary: #F59E0B;
+  --cw-debt: #EF4444;
+  --cw-savings: #10B981;
+  --cw-bg: #F0FDFA;
+  --cw-surface: #FFFFFF;
+  --cw-text: #134E4A;
+  --cw-text-muted: #475569;
+  --cw-border: #E2E8F0;
+
+  font-family: var(--font-ibm-plex-sans), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: var(--cw-text);
+  background: var(--cw-bg);
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+.planner-app input,
+.planner-app select,
+.planner-app textarea,
+.planner-app button {
+  font-family: inherit;
+}
+
+/* Tabular numerals for any $ value */
+.cw-tnum { font-variant-numeric: tabular-nums; }
+
+/* Hide scroll-wheel from number inputs (we use CurrencyInput, but defensive) */
+.planner-app input[type="number"]::-webkit-outer-spin-button,
+.planner-app input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.planner-app input[type="number"] { -moz-appearance: textfield; }
+
+/* Sticky header shadow that appears once page is scrolled */
+.cw-sticky-shadow {
+  box-shadow: 0 1px 0 0 var(--cw-border), 0 4px 12px -8px rgba(15, 118, 110, 0.18);
+}
+
+/* Row pulse on save commit */
+@keyframes cw-row-pulse {
+  0%   { background-color: rgba(20, 184, 166, 0.0); }
+  20%  { background-color: rgba(20, 184, 166, 0.18); }
+  100% { background-color: rgba(20, 184, 166, 0.0); }
+}
+.cw-row-pulse { animation: cw-row-pulse 720ms ease-out 1; }
+
+/* Skeleton shimmer for initial loads */
+@keyframes cw-shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+.cw-skeleton {
+  background: linear-gradient(90deg, #E2E8F0 0%, #F1F5F9 50%, #E2E8F0 100%);
+  background-size: 800px 100%;
+  animation: cw-shimmer 1.4s linear infinite;
+  border-radius: 6px;
+}
+
+/* Compact spinner */
+@keyframes cw-spin { to { transform: rotate(360deg); } }
+.cw-spin { animation: cw-spin 0.8s linear infinite; }
+
+/* Number tick-up: just fade so we don't flash */
+@keyframes cw-num-tick {
+  0% { transform: translateY(-3px); opacity: 0.45; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+.cw-num-tick { animation: cw-num-tick 280ms ease-out 1; }
+
+/* Reduce-motion respect for planner additions */
+@media (prefers-reduced-motion: reduce) {
+  .cw-row-pulse,
+  .cw-skeleton,
+  .cw-spin,
+  .cw-num-tick {
+    animation: none !important;
+  }
 }

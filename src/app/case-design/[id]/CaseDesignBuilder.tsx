@@ -152,12 +152,15 @@ export default function CaseDesignBuilder({
 
   // --- Mutations ----------------------------------------------------------
 
+  // Owner_Label__c and Custodian__c are SF-required (required=true at the field
+  // level). Empty strings get rejected with REQUIRED_FIELD_MISSING, so we seed
+  // legible placeholder text that the advisor overwrites in the EditPanel.
   const handleAddSource = useCallback(async () => {
     const id = await addPosition({
       Role__c: "Source",
-      Owner_Label__c: "",
+      Owner_Label__c: "Client",
       Account_Type__c: "IRA",
-      Custodian__c: "",
+      Custodian__c: "—",
     });
     setSelectedPositionId(id);
   }, [addPosition]);
@@ -165,9 +168,9 @@ export default function CaseDesignBuilder({
   const handleAddDestination = useCallback(async () => {
     const id = await addPosition({
       Role__c: "Destination",
-      Owner_Label__c: "",
+      Owner_Label__c: "Client",
       Account_Type__c: "IRA",
-      Custodian__c: "",
+      Custodian__c: "—",
     });
     setSelectedPositionId(id);
   }, [addPosition]);
@@ -181,11 +184,13 @@ export default function CaseDesignBuilder({
     if (toLoad.length === 0) return;
     for (const a of toLoad) {
       const amount = a.Balance__c ?? a.Market_Value__c ?? null;
+      // Intake fields can be blank; fall back to placeholders so the SF
+      // required-field check passes on create.
       await addPosition({
         Role__c: "Source",
         Source_Asset__c: a.Id,
-        Owner_Label__c: a.Asset_Owner__c ?? "",
-        Custodian__c: a.Company__c ?? "",
+        Owner_Label__c: a.Asset_Owner__c?.trim() || "Client",
+        Custodian__c: a.Company__c?.trim() || "—",
         Account_Type__c: inferAccountType(a),
         Amount__c: amount,
         Cash_Value__c: a.Cash_Value__c ?? null,
