@@ -29,7 +29,10 @@ export async function GET(request: NextRequest) {
       const status = result.error === "Intake not found" ? 404 : 400;
       return Response.json({ error: result.error }, { status });
     }
-    return Response.json(result);
+    // Surface Lead__c so the form can switch into Introductory-Meeting mode.
+    const rec = (result.record as Record<string, unknown> | undefined) ?? {};
+    const leadId = (rec.Lead__c as string | null | undefined) ?? null;
+    return Response.json({ ...result, leadId });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("Meeting1 session error:", msg);
