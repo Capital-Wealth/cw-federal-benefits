@@ -1,14 +1,14 @@
 import { NextRequest } from "next/server";
-import { execSync } from "child_process";
-import { writeFileSync, mkdirSync, unlinkSync } from "fs";
-import { join } from "path";
-import { tmpdir } from "os";
+import Anthropic from "@anthropic-ai/sdk";
 import { getSFConnection } from "@/lib/salesforce/connector";
 import { listIntakeDocuments, downloadFromSalesforce } from "@/lib/salesforce/files";
 import { parseDocument, mergeParseResults } from "@/lib/parsing/document-parser";
 import { updateIntake } from "@/lib/salesforce/connector";
 import { SF_CONFIG } from "@/config";
 import type { DocumentType, FederalBenefitsIntake } from "@/types";
+
+const anthropic = new Anthropic();
+const PARSER_MODEL = "claude-opus-4-7";
 
 /**
  * POST /api/parse — Parse uploaded documents and update Salesforce.
@@ -135,7 +135,6 @@ Rules:
 - For balances, use the most recent/current value, not the year-start or beginning-balance.`;
 
 const PARSE_TIMEOUT_MS = 120_000;
-const PARSE_MAX_BUFFER = 10 * 1024 * 1024;
 
 interface GeneralParseOutput {
   annualIncome?: number | null;
@@ -155,42 +154,49 @@ async function parseGeneralDoc(
   mimeType: string,
   fileName: string
 ): Promise<{ fields: GeneralParseOutput; success: boolean; error?: string }> {
-  const extMap: Record<string, string> = {
-    "application/pdf": ".pdf",
-    "image/jpeg": ".jpg",
-    "image/png": ".png",
-    "image/webp": ".webp",
-  };
-  const ext = extMap[mimeType];
-  if (!ext) return { fields: {}, success: false, error: `Unsupported mime: ${mimeType}` };
+  const supportedImageTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const;
+  type SupportedImageType = typeof supportedImageTypes[number];
+  const isPdf = mimeType === "application/pdf";
+  const isImage = (supportedImageTypes as readonly string[]).includes(mimeType);
+  if (!isPdf && !isImage) return { fields: {}, success: false, error: `Unsupported mime: ${mimeType}` };
 
-  const tempDir = join(tmpdir(), "cw-general-parse");
-  mkdirSync(tempDir, { recursive: true });
-  const tempPath = join(tempDir, `parse-${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
+  const docBlock = isPdf
+    ? {
+        type: "document" as const,
+        source: { type: "base64" as const, media_type: "application/pdf" as const, data: buffer.toString("base64") },
+      }
+    : {
+        type: "image" as const,
+        source: { type: "base64" as const, media_type: mimeType as SupportedImageType, data: buffer.toString("base64") },
+      };
 
   try {
-    writeFileSync(tempPath, buffer);
-    const promptEscaped = GENERAL_PROMPT.replace(/"/g, '\\"').replace(/\$/g, "\\$");
-    const raw = execSync(
-      `cat "${tempPath}" | claude -p "Analyze this retirement document named '${fileName.replace(/'/g, "")}' and extract the fields described. ${promptEscaped}"`,
+    const response = await anthropic.messages.create(
       {
-        encoding: "utf-8",
-        timeout: PARSE_TIMEOUT_MS,
-        maxBuffer: PARSE_MAX_BUFFER,
-        env: { ...process.env, LANG: "en_US.UTF-8" },
-      }
-    ).trim();
+        model: PARSER_MODEL,
+        max_tokens: 2048,
+        messages: [{
+          role: "user",
+          content: [
+            docBlock,
+            { type: "text", text: `Analyze this retirement document named "${fileName}" and extract the fields described.\n\n${GENERAL_PROMPT}` },
+          ],
+        }],
+      },
+      { timeout: PARSE_TIMEOUT_MS },
+    );
 
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return { fields: {}, success: false, error: `No JSON in response: ${raw.slice(0, 200)}` };
+    const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === "text");
+    if (!textBlock) return { fields: {}, success: false, error: "No text response from Claude" };
+
+    const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return { fields: {}, success: false, error: `No JSON in response: ${textBlock.text.slice(0, 200)}` };
 
     const fields = JSON.parse(jsonMatch[0]) as GeneralParseOutput;
     return { fields, success: true };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return { fields: {}, success: false, error: msg };
-  } finally {
-    try { unlinkSync(tempPath); } catch { /* ignore */ }
   }
 }
 
