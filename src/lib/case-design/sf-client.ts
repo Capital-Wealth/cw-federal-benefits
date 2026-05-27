@@ -35,7 +35,8 @@ function safeId(id: string): string {
 }
 
 const PARENT_FIELDS = [
-  "Id", "Name", "Account__c", "Opportunity__c", "Status__c", "Plan_Date__c", "Document_Title__c",
+  "Id", "Name", "Account__c", "Account__r.Name",
+  "Opportunity__c", "Status__c", "Plan_Date__c", "Document_Title__c",
   "Plan_Type__c", "Has_Roth_Conversion__c", "Notes__c",
   "PDF_ContentVersion_Id__c", "PDF_Vault_Document_Id__c",
   "Finalized_At__c", "Presented_At__c", "Locked_At__c",
@@ -100,8 +101,18 @@ export async function loadCaseDesign(id: string): Promise<CaseDesignBundle | nul
     ),
   ]);
   if (parentRows.records.length === 0) return null;
+  // Flatten Account__r.Name onto the parent so the client can read it as a
+  // top-level `Account_Name__c` (jsforce returns relationships as nested
+  // objects; the type expects a flat shape).
+  const rawParent = parentRows.records[0] as CaseDesignParent & {
+    Account__r?: { Name?: string | null } | null;
+  };
+  const parent: CaseDesignParent = {
+    ...rawParent,
+    Account_Name__c: rawParent.Account__r?.Name ?? null,
+  };
   return {
-    parent: parentRows.records[0],
+    parent,
     sections: sections.records,
     positions: positions.records,
     edges: edges.records,

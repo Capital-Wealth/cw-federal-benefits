@@ -24,6 +24,13 @@ import {
 
 export interface MoneyMapNodeData extends Record<string, unknown> {
   position: CaseDesignPosition;
+  /**
+   * Set by the Diagram component on Source positions that have no outgoing
+   * edges. Renders a subtle "KEEP" badge so the advisor can tell at a glance
+   * which accounts are staying put (e.g. existing carrier annuities, IULs)
+   * vs which are flowing into a destination.
+   */
+  keepBadge?: boolean;
 }
 
 export type MoneyMapNodeType = Node<MoneyMapNodeData, "moneyMap">;
@@ -89,11 +96,26 @@ function MoneyMapNodeInner({ data, selected }: NodeProps<MoneyMapNodeType>) {
       <CurlyBrace side="left" />
       <CurlyBrace side="right" />
 
+      {data.keepBadge && (
+        <span
+          className="absolute -top-2 right-1 z-10 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-600 text-white text-[9px] font-bold uppercase tracking-wider shadow-sm pointer-events-none"
+          title="No move planned — this account stays in place."
+          aria-label="Stays in place"
+        >
+          <svg className="w-2 h-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M5 13l4 4L19 7" />
+          </svg>
+          Keep
+        </span>
+      )}
+
       <div
         className={`bg-white rounded-lg px-3 py-2.5 cursor-pointer transition-shadow duration-200 motion-reduce:transition-none ${
           selected
             ? "ring-2 ring-[#C7A356] shadow-md"
-            : "ring-1 ring-zinc-200 group-hover:shadow-md"
+            : data.keepBadge
+              ? "ring-1 ring-emerald-200 group-hover:shadow-md"
+              : "ring-1 ring-zinc-200 group-hover:shadow-md"
         }`}
         style={{ width: NODE_WIDTH, minHeight: NODE_HEIGHT }}
       >

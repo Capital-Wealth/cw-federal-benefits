@@ -50,9 +50,17 @@ function inferAccountType(asset: MeetingIntakeAsset): AccountType {
 
 /** Derive a friendly household name to display in the header from the parent record. */
 function deriveHouseholdLabel(parent: CaseDesignBundle["parent"]): string {
-  // Document_Title__c is by convention "{Household} Retirement Money Map" or a
-  // free-form title. Strip the suffix when it matches so the header shows just
-  // the family name in the navy bar.
+  // Prefer the live Account.Name from Salesforce (hydrated at load time);
+  // strip the "- Household" suffix CW uses on household Account records so
+  // "John & Cristi Porter - Household" reads as "John & Cristi Porter".
+  const acct = (parent.Account_Name__c || "").trim();
+  if (acct) {
+    return acct
+      .replace(/\s*[-—–]\s*Household\s*$/i, "")
+      .replace(/\s+Household\s*$/i, "")
+      .trim() || acct;
+  }
+  // Fallback: free-form Document_Title__c with "Money Map" suffix stripped.
   const t = (parent.Document_Title__c || "").trim();
   if (!t || t === "Retirement Money Map") return "Household";
   const cleaned = t

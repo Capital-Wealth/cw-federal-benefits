@@ -83,6 +83,8 @@ export interface CaseDesignParent {
   Id: string;
   Name: string;
   Account__c: string | null;
+  /** Hydrated from Account__r.Name at load time; null if Account__c is null. */
+  Account_Name__c?: string | null;
   Opportunity__c: string | null;
   Status__c: CaseDesignStatus;
   Plan_Date__c: string | null;

@@ -111,16 +111,30 @@ export default function Diagram({
     [bundle.positions, bundle.edges]
   );
 
+  // Sources with no outgoing edges = "Keep" — advertised on the node via a
+  // small badge. Computed once per render off the bundle edges.
+  const sourceIdsWithOutgoing = useMemo(() => {
+    const s = new Set<string>();
+    for (const e of bundle.edges) {
+      if (e.From_Position__c) s.add(e.From_Position__c);
+    }
+    return s;
+  }, [bundle.edges]);
+
   const nodes: RFNode[] = useMemo(() => {
-    const accountNodes: RFNode<MoneyMapNodeData>[] = layout.nodes.map((n) => ({
-      id: n.id,
-      type: "moneyMap",
-      position: { x: n.x, y: n.y },
-      data: { position: n.position },
-      draggable: !readOnly,
-      selectable: true,
-      selected: n.id === selectedPositionId,
-    }));
+    const accountNodes: RFNode<MoneyMapNodeData>[] = layout.nodes.map((n) => {
+      const isKeep =
+        n.position.Role__c === "Source" && !sourceIdsWithOutgoing.has(n.id);
+      return {
+        id: n.id,
+        type: "moneyMap",
+        position: { x: n.x, y: n.y },
+        data: { position: n.position, keepBadge: isKeep },
+        draggable: !readOnly,
+        selectable: true,
+        selected: n.id === selectedPositionId,
+      };
+    });
     // Column-header labels sit just above the top of each column. Indexed by
     // the column's source/destination position so they pan with the canvas.
     const headerNodes: RFNode[] = layout.columnLabels.map((c: ColumnLabel) => ({

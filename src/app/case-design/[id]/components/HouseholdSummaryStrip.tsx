@@ -57,14 +57,22 @@ export default function HouseholdSummaryStrip({ bundle, householdLabel }: Props)
               <span
                 key={b.bucket}
                 className="inline-flex items-baseline gap-1 px-2 py-0.5 rounded-full bg-zinc-100 text-[11px] text-zinc-700 border border-zinc-200"
-                title={`${b.count} ${b.bucket} account${b.count === 1 ? "" : "s"} · ${formatMoneyCompact(b.total)}`}
+                title={
+                  b.total > 0
+                    ? `${b.count} ${b.bucket} account${b.count === 1 ? "" : "s"} · ${formatMoneyCompact(b.total)}`
+                    : `${b.count} ${b.bucket} account${b.count === 1 ? "" : "s"} · no Amount on Opportunity`
+                }
               >
                 <span className="font-semibold text-[#16253C]">{b.count}</span>
                 <span>{b.bucket}</span>
-                <span className="text-zinc-400">·</span>
-                <span className="font-semibold text-zinc-900 tabular-nums">
-                  {formatMoneyCompact(b.total)}
-                </span>
+                {b.total > 0 && (
+                  <>
+                    <span className="text-zinc-400">·</span>
+                    <span className="font-semibold text-zinc-900 tabular-nums">
+                      {formatMoneyCompact(b.total)}
+                    </span>
+                  </>
+                )}
               </span>
             ))}
           </div>

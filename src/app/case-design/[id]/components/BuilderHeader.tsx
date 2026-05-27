@@ -146,6 +146,7 @@ export default function BuilderHeader(props: BuilderHeaderProps) {
           canConfirm={canConfirm}
           hasSources={hasSources}
           hasDestinations={hasDestinations}
+          destinationCount={destinationCount}
           hasPdf={!!parent.PDF_ContentVersion_Id__c}
           onConfirmAndCreate={onConfirmAndCreate}
           onDownloadPdf={onDownloadPdf}
@@ -484,6 +485,7 @@ function PrimaryCTA({
   canConfirm,
   hasSources,
   hasDestinations,
+  destinationCount,
   hasPdf,
   onConfirmAndCreate,
   onDownloadPdf,
@@ -492,10 +494,14 @@ function PrimaryCTA({
   canConfirm: boolean;
   hasSources: boolean;
   hasDestinations: boolean;
+  destinationCount: number;
   hasPdf: boolean;
   onConfirmAndCreate: () => void;
   onDownloadPdf: () => void;
 }) {
+  const oppCountLabel = `Confirm & Create ${destinationCount} Opp${
+    destinationCount === 1 ? "" : "s"
+  }`;
   if (status === "Locked") {
     return (
       <button
@@ -518,12 +524,12 @@ function PrimaryCTA({
         type="button"
         onClick={onConfirmAndCreate}
         disabled={!canConfirm}
-        className="inline-flex items-center gap-2 px-4 py-2 min-h-[44px] text-xs font-bold bg-[#C7A356] text-[#16253C] rounded-md hover:bg-[#D9B96E] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[#C7A356] focus:ring-offset-1 focus:ring-offset-[#16253C] motion-reduce:transition-none"
+        className="inline-flex items-center gap-2 px-4 py-2 min-h-[44px] text-xs font-bold whitespace-nowrap bg-[#C7A356] text-[#16253C] rounded-md hover:bg-[#D9B96E] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[#C7A356] focus:ring-offset-1 focus:ring-offset-[#16253C] motion-reduce:transition-none"
       >
         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M5 13l4 4L19 7" />
         </svg>
-        Confirm & Create Opps
+        {oppCountLabel}
       </button>
     );
   }
@@ -534,13 +540,13 @@ function PrimaryCTA({
       <button
         type="button"
         onClick={onConfirmAndCreate}
-        className="cw-cta-ready inline-flex items-center gap-2 px-4 py-2 min-h-[44px] text-xs font-bold bg-[#C7A356] text-[#16253C] rounded-md hover:bg-[#D9B96E] cursor-pointer transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[#C7A356] focus:ring-offset-1 focus:ring-offset-[#16253C] motion-reduce:transition-none"
+        className="cw-cta-ready inline-flex items-center gap-2 px-4 py-2 min-h-[44px] text-xs font-bold whitespace-nowrap bg-[#C7A356] text-[#16253C] rounded-md hover:bg-[#D9B96E] cursor-pointer transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[#C7A356] focus:ring-offset-1 focus:ring-offset-[#16253C] motion-reduce:transition-none"
         title="Locks the Case Design and creates child Opportunities in Salesforce for each destination."
       >
         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M5 13l4 4L19 7" />
         </svg>
-        Confirm & Create Opps
+        {oppCountLabel}
       </button>
     );
   }
