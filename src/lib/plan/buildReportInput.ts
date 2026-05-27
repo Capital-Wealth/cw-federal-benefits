@@ -64,23 +64,28 @@ export function buildReportInput(
   state: PlanState,
   meta: { fullName: string; dateOfBirth: string; address: string | null },
 ): ReportInput {
-  const civilian = deriveCreditableService(
-    state.Service_Computation_Date__c,
-    state.Desired_Retirement_Date__c,
-  );
+  // Soft defaults: when a date is missing, fall back to today so the calc
+  // engine produces 0s instead of NaNs. The UI surfaces which fields are
+  // estimated so the advisor knows the result is partial.
+  const today = new Date().toISOString().slice(0, 10);
+  const scd = state.Service_Computation_Date__c || today;
+  const plannedRetirement = state.Desired_Retirement_Date__c || today;
+  const dob = meta.dateOfBirth || "1970-01-01";
+
+  const civilian = deriveCreditableService(scd, plannedRetirement);
 
   const tspReturn = 0.07; // average TSP fund mix; calc engine will use blendedRate from balances+returnRate
 
   return {
     personal: {
       fullName: meta.fullName,
-      dateOfBirth: meta.dateOfBirth,
+      dateOfBirth: dob,
       address: meta.address ?? "",
       maritalStatus: "MARRIED", // honored only as fallback for survivor; explicit election overrides
       spouseDateOfBirth: "",
     },
     employment: {
-      serviceComputationDate: state.Service_Computation_Date__c,
+      serviceComputationDate: scd,
       retirementSystem: mapRetirementSystem(state.Retirement_System__c),
       employeeType: "REGULAR",
       currentAnnualSalary: state.Current_Annual_Salary__c,
@@ -88,7 +93,7 @@ export function buildReportInput(
       creditableServiceYears: civilian.years,
       creditableServiceMonths: civilian.months,
       sickLeaveHours: state.Sick_Leave_Hours_To_Date__c,
-      plannedRetirementDate: state.Desired_Retirement_Date__c,
+      plannedRetirementDate: plannedRetirement,
       csrsServiceYears: 0,
       csrsServiceMonths: 0,
       fersServiceYears: 0,

@@ -532,41 +532,34 @@ function PlanColumn(props: {
   reparsing: boolean;
 }) {
   const { label, highlighted, state, result, clientName, address, dateOfBirth, isComparison, onUpdate, onReparse, reparsing } = props;
-  if (!result) {
-    // Diagnose what's missing so the advisor knows what to enter.
-    const missing: string[] = [];
-    if (!state.Service_Computation_Date__c) missing.push("Service Computation Date");
-    if (!state.Desired_Retirement_Date__c) missing.push("Retirement Date");
-    if (!dateOfBirth) missing.push("Date of Birth (on the linked Contact)");
-    if (!state.Current_Annual_Salary__c) missing.push("Current Annual Salary");
-    if (!state.Retirement_System__c) missing.push("Retirement System (FERS/CSRS)");
 
+  // Always render the plan, even when fields are missing. The calc engine
+  // returns 0s for unknowns; the banner below lists what's estimated so the
+  // advisor can fill in (or get the info from the client later).
+  const missing: string[] = [];
+  if (!state.Service_Computation_Date__c) missing.push("Service Computation Date");
+  if (!state.Desired_Retirement_Date__c) missing.push("Planned Retirement Date");
+  if (!dateOfBirth) missing.push("Date of Birth");
+  if (!state.Current_Annual_Salary__c) missing.push("Current Annual Salary");
+  if (!state.Retirement_System__c) missing.push("Retirement System (FERS/CSRS)");
+  if (!address) missing.push("Mailing Address (on Contact)");
+
+  if (!result) {
+    // The calc engine threw despite the soft-defaults — surface the raw
+    // problem rather than the missing-inputs message.
     return (
       <main style={{
         background: "#fff", padding: 32, borderRadius: 4,
-        boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-        minHeight: 320,
+        boxShadow: "0 1px 3px rgba(0,0,0,0.06)", minHeight: 320,
       }}>
-        <div style={{ fontSize: 10, color: "#C7A356", letterSpacing: 3, fontWeight: 600 }}>READY TO RUN — MISSING INPUTS</div>
+        <div style={{ fontSize: 10, color: "#C7A356", letterSpacing: 3, fontWeight: 600 }}>CALC ENGINE ERROR</div>
         <h1 style={{ fontFamily: FONT_DISPLAY, fontSize: 26, color: "#16253C", margin: "4px 0 8px" }}>
-          A few inputs needed before we can run the projection
+          The projection couldn&apos;t run
         </h1>
         <div style={{ width: 50, height: 2, background: "#C7A356", marginBottom: 16 }} />
-        <p style={{ fontSize: 13, color: "#374151", lineHeight: 1.6, marginBottom: 16 }}>
-          {missing.length > 0
-            ? <>Enter the following on the right to see the live numbers:</>
-            : <>The calc engine encountered an issue — try adjusting an input on the right.</>}
+        <p style={{ fontSize: 13, color: "#374151", lineHeight: 1.6 }}>
+          Try adjusting an input on the right, or re-parse the uploaded documents.
         </p>
-        {missing.length > 0 && (
-          <ul style={{ paddingLeft: 20, fontSize: 13, color: "#16253C", lineHeight: 1.8 }}>
-            {missing.map((m) => <li key={m}><strong>{m}</strong></li>)}
-          </ul>
-        )}
-        <div style={{ marginTop: 24, padding: 14, background: "#fef9ee", borderLeft: "3px solid #C7A356", fontSize: 12, color: "#374151", lineHeight: 1.5 }}>
-          <strong>If a new document just landed</strong> (e.g. LES uploaded late), re-run the
-          AI parser to pull values from every document attached to this record. Otherwise type
-          values into the edit panel on the right.
-        </div>
         <button
           onClick={onReparse}
           disabled={reparsing}
@@ -604,6 +597,37 @@ function PlanColumn(props: {
       <div style={{ fontSize: 10, color: "#C7A356", letterSpacing: 3, fontWeight: 600 }}>YOUR PLAN AT A GLANCE</div>
       <h1 style={{ fontFamily: FONT_DISPLAY, fontSize: 26, color: "#16253C", margin: "4px 0 8px" }}>Federal Employee Benefits Summary</h1>
       <div style={{ width: 50, height: 2, background: "#C7A356", marginBottom: 16 }} />
+
+      {missing.length > 0 && (
+        <div style={{
+          background: "#fef9ee", border: "1px solid #C7A356", borderLeft: "3px solid #C7A356",
+          padding: "10px 14px", marginBottom: 14, borderRadius: 4,
+          display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12,
+        }}>
+          <div style={{ fontSize: 12, color: "#374151", lineHeight: 1.5 }}>
+            <strong style={{ color: "#16253C" }}>Estimated — {missing.length} field{missing.length === 1 ? "" : "s"} pending:</strong>{" "}
+            {missing.join(" · ")}.{" "}
+            <span style={{ color: "#6B7280" }}>
+              Numbers below reflect zeros for unknowns. Fill in on the right or re-parse documents to refine.
+            </span>
+          </div>
+          <button
+            onClick={onReparse}
+            disabled={reparsing}
+            style={{
+              flexShrink: 0, padding: "6px 10px", borderRadius: 4,
+              border: "1px solid #16253C",
+              background: reparsing ? "#7b868C" : "#fff",
+              color: reparsing ? "#fff" : "#16253C",
+              fontWeight: 600, fontSize: 11,
+              cursor: reparsing ? "not-allowed" : "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {reparsing ? "Re-parsing…" : "↻ Recalculate"}
+          </button>
+        </div>
+      )}
 
       {/* Hero */}
       <Highlightable id="hero-annuity" style={{ background: "#16253C", padding: "20px 24px", marginBottom: 14, borderRadius: 4 }}>
@@ -811,8 +835,11 @@ function PlanColumn(props: {
 // ============================================================
 
 function safeCalculate(state: PlanState, meta: { fullName: string; dateOfBirth: string; address: string | null }) {
+  // Soft-fail philosophy: the plan should always render. When required
+  // dates/numbers are missing, buildReportInput substitutes safe defaults
+  // (today, 0, FERS) so the calc engine returns clean zeros instead of
+  // NaNs. The PlanColumn surfaces which fields are estimated.
   try {
-    if (!state.Service_Computation_Date__c || !state.Desired_Retirement_Date__c) return null;
     const input = buildReportInput(state, meta);
     return calculateReport(input);
   } catch (e) {
