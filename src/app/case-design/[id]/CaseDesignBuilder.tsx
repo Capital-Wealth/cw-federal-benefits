@@ -107,6 +107,15 @@ export default function CaseDesignBuilder({
   const [autoFilling, setAutoFilling] = useState(false);
   const autoFillTriedRef = useRef(false);
   const suggestTriedRef = useRef(false);
+  const generateFromVaultTriedRef = useRef(false);
+  const [vaultGeneratedSummary, setVaultGeneratedSummary] = useState<{
+    sourcesCreated: number;
+    destinationsCreated: number;
+    edgesCreated: number;
+    keepCount: number;
+    lowConfidenceCount: number;
+    fieldsNeedingReview: string;
+  } | null>(null);
 
   // --- Load household assets once on mount (replaces the old VaultSidebar fetch). ---
   useEffect(() => {
@@ -149,6 +158,77 @@ export default function CaseDesignBuilder({
     window.addEventListener("cw-case-design-error", onErr);
     return () => window.removeEventListener("cw-case-design-error", onErr);
   }, []);
+
+  // --- Generate from Vault — primary path (Phase B) ---
+  //
+  // Fires once on first mount when Draft + zero positions + zero edges. Calls
+  // the unified generate-from-vault endpoint that reads Retirement_Intake__c
+  // + Federal_Benefits_Intake__c, applies CMT-driven mappings + age-aware
+  // eligibility rules, and creates the full Money Map (sources, destinations,
+  // edges) in one shot. When the Vault returns nothing for this household,
+  // the response status is "skipped-no-vault" and the existing auto-fill
+  // useEffect picks up the fallback Opportunity-history path.
+  useEffect(() => {
+    if (generateFromVaultTriedRef.current) return;
+    if (locked) return;
+    if (parent.Status__c !== "Draft") return;
+    if (bundle.positions.length > 0) return;
+    if (bundle.edges.length > 0) return;
+    generateFromVaultTriedRef.current = true;
+    setAutoFilling(true);
+    (async () => {
+      try {
+        const res = await fetch(`/api/case-design/${parent.Id}/generate-from-vault`, {
+          method: "POST",
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          status?: string;
+          sourcesCreated?: number;
+          destinationsCreated?: number;
+          edgesCreated?: number;
+          keepCount?: number;
+          lowConfidenceCount?: number;
+          fieldsNeedingReview?: string;
+          error?: string;
+          reasonIfSkipped?: string;
+        };
+        if (data.status === "ok" && (data.sourcesCreated ?? 0) > 0) {
+          await refetch();
+          setVaultGeneratedSummary({
+            sourcesCreated: data.sourcesCreated ?? 0,
+            destinationsCreated: data.destinationsCreated ?? 0,
+            edgesCreated: data.edgesCreated ?? 0,
+            keepCount: data.keepCount ?? 0,
+            lowConfidenceCount: data.lowConfidenceCount ?? 0,
+            fieldsNeedingReview: data.fieldsNeedingReview ?? "",
+          });
+          setToast({
+            kind: "ok",
+            msg: `Generated ${data.sourcesCreated} sources, ${data.destinationsCreated} destinations, ${data.edgesCreated} arrows from Vault. Review the canvas — audit list on the right.`,
+          });
+          // Vault path covered everything — DON'T fall through to legacy
+          // auto-fill or suggest-destinations.
+          autoFillTriedRef.current = true;
+          suggestTriedRef.current = true;
+        } else if (data.status === "skipped-no-vault") {
+          // Fall through to existing Opp-history auto-fill — DON'T block it.
+          // The legacy useEffects will fire on next render because we leave
+          // their refs alone.
+        } else if (data.status === "skipped-existing" || data.status === "skipped-non-draft") {
+          autoFillTriedRef.current = true;
+          suggestTriedRef.current = true;
+        } else if (!res.ok) {
+          // Show error but don't block legacy fallback either
+          setToast({ kind: "err", msg: data.error || data.reasonIfSkipped || "Generate failed" });
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Generate failed";
+        setToast({ kind: "err", msg });
+      } finally {
+        setAutoFilling(false);
+      }
+    })();
+  }, [parent.Id, parent.Status__c, locked, bundle.positions.length, bundle.edges.length, refetch]);
 
   // --- Auto-fill from Salesforce on first open ---
   //

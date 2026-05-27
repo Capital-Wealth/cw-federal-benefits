@@ -29,7 +29,10 @@ export type PositionRole = "Source" | "Destination" | "Standalone";
 export type AccountType =
   | "401k"
   | "403b"
+  | "Roth 401k"
   | "Roth 403b"
+  | "TSP"
+  | "Roth TSP"
   | "IRA"
   | "Roth IRA"
   | "Roth"
