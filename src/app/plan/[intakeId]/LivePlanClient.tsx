@@ -168,6 +168,7 @@ export default function LivePlanClient({
 
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [reparsing, setReparsing] = useState(false);
   const [message, setMessage] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
   // Presentation highlighting (screen-only, per meeting).
@@ -262,6 +263,33 @@ export default function LivePlanClient({
       setMessage({ kind: "err", text: e instanceof Error ? e.message : "Save failed" });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleReparse() {
+    setReparsing(true);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          intakeId: session.intakeId,
+          intakeObject: "Federal_Benefits_Intake__c",
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `Re-parse failed (${res.status})`);
+      const parsed = json.parsed ?? 0;
+      const failed = json.failed ?? 0;
+      setMessage({
+        kind: "ok",
+        text: `Re-parsed ${parsed} document${parsed === 1 ? "" : "s"}${failed ? ` (${failed} failed)` : ""}. Reloading…`,
+      });
+      setTimeout(() => window.location.reload(), 1200);
+    } catch (e) {
+      setMessage({ kind: "err", text: e instanceof Error ? e.message : "Re-parse failed" });
+      setReparsing(false);
     }
   }
 
@@ -372,6 +400,8 @@ export default function LivePlanClient({
           dateOfBirth={dateOfBirth}
           isComparison={!!planB}
           onUpdate={(k, v) => setPlanA((s) => ({ ...s, [k]: v }))}
+          onReparse={handleReparse}
+          reparsing={reparsing}
         />
 
         {/* PLAN B column (conditional) */}
@@ -386,6 +416,8 @@ export default function LivePlanClient({
             dateOfBirth={dateOfBirth}
             isComparison
             onUpdate={(k, v) => setPlanB((s: PlanState | null) => ({ ...(s ?? initial), [k]: v }))}
+            onReparse={handleReparse}
+            reparsing={reparsing}
           />
         )}
 
@@ -436,14 +468,29 @@ export default function LivePlanClient({
             </Group>
 
             {active === "A" && (
-              <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-                <button onClick={handleSave} disabled={!dirty || saving} style={primaryBtn(dirty && !saving)}>
-                  {saving ? "Saving…" : dirty ? "Save Changes" : "All Saved"}
+              <>
+                <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+                  <button onClick={handleSave} disabled={!dirty || saving} style={primaryBtn(dirty && !saving)}>
+                    {saving ? "Saving…" : dirty ? "Save Changes" : "All Saved"}
+                  </button>
+                  <button onClick={handleGeneratePdf} disabled={generating} style={goldBtn(!generating)}>
+                    {generating ? "Generating…" : "Lock & Generate PDF"}
+                  </button>
+                </div>
+                <button
+                  onClick={handleReparse}
+                  disabled={reparsing || saving || generating}
+                  title="Re-runs AI extraction on every document attached to this record. Use after a client uploads a missing doc late."
+                  style={{
+                    width: "100%", marginTop: 8, padding: "10px 14px", borderRadius: 4,
+                    border: "1px solid #16253C", background: reparsing ? "#7b868C" : "#fff",
+                    color: reparsing ? "#fff" : "#16253C", fontWeight: 600, fontSize: 12,
+                    cursor: reparsing || saving || generating ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {reparsing ? "Re-parsing documents…" : "↻ Recalculate from uploaded documents"}
                 </button>
-                <button onClick={handleGeneratePdf} disabled={generating} style={goldBtn(!generating)}>
-                  {generating ? "Generating…" : "Lock & Generate PDF"}
-                </button>
-              </div>
+              </>
             )}
             {active === "B" && (
               <div style={{ marginTop: 16, padding: 10, background: "#fef9ee", border: "1px solid #C7A356", borderRadius: 4, fontSize: 11, color: "#374151" }}>
@@ -481,8 +528,10 @@ function PlanColumn(props: {
   dateOfBirth: string | null;
   isComparison: boolean;
   onUpdate: <K extends keyof PlanState>(key: K, value: PlanState[K]) => void;
+  onReparse: () => void;
+  reparsing: boolean;
 }) {
-  const { label, highlighted, state, result, clientName, address, dateOfBirth, isComparison, onUpdate } = props;
+  const { label, highlighted, state, result, clientName, address, dateOfBirth, isComparison, onUpdate, onReparse, reparsing } = props;
   if (!result) {
     // Diagnose what's missing so the advisor knows what to enter.
     const missing: string[] = [];
@@ -514,10 +563,23 @@ function PlanColumn(props: {
           </ul>
         )}
         <div style={{ marginTop: 24, padding: 14, background: "#fef9ee", borderLeft: "3px solid #C7A356", fontSize: 12, color: "#374151", lineHeight: 1.5 }}>
-          <strong>Tip:</strong> If the documents have already been uploaded but a value is missing,
-          it likely wasn't extracted by the AI parser. Type it in here — the value will save
-          back to Salesforce when you click "Save Changes".
+          <strong>If a new document just landed</strong> (e.g. LES uploaded late), re-run the
+          AI parser to pull values from every document attached to this record. Otherwise type
+          values into the edit panel on the right.
         </div>
+        <button
+          onClick={onReparse}
+          disabled={reparsing}
+          style={{
+            marginTop: 12, padding: "10px 16px", borderRadius: 4,
+            border: "1px solid #16253C",
+            background: reparsing ? "#7b868C" : "#16253C",
+            color: "#fff", fontWeight: 700, fontSize: 13,
+            cursor: reparsing ? "not-allowed" : "pointer",
+          }}
+        >
+          {reparsing ? "Re-parsing documents…" : "↻ Recalculate from uploaded documents"}
+        </button>
       </main>
     );
   }
