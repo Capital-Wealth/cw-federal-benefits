@@ -66,8 +66,18 @@ export function calculateReport(input: ReportInput): CalculationResult {
   );
 
   // ---- MRA+10 Early Retirement ----
+  // Special-provision employees (LEO / Firefighter / ATC) retire UNREDUCED
+  // under their own rules (age 50 + 20 yrs, or any age + 25 yrs) and are never
+  // subject to the MRA+10 reduction. Classifying an LEO as MRA+10 both applies
+  // a bogus 5%/yr penalty AND zeroes their FERS Supplement (which they qualify
+  // for at 20 yrs, not 30). See feedback_les_availability_pay_high3.md.
+  const empType = input.employment.employeeType;
+  const isSpecialProvisionType =
+    empType === 'LEO' || empType === 'FIREFIGHTER' || empType === 'ATC';
   const mra = getMRA(birthYear);
-  const isMra10 = isMraPlus10Retirement(ageAtRetirement, mra, totalServiceDecimal);
+  const isMra10 =
+    !isSpecialProvisionType &&
+    isMraPlus10Retirement(ageAtRetirement, mra, totalServiceDecimal);
 
   // ---- Annuity ----
   const annuity = calculateAnnuityWithAge(
@@ -78,13 +88,18 @@ export function calculateReport(input: ReportInput): CalculationResult {
   );
 
   // ---- MRA+10 Penalty ----
-  const mraPlus10 = calculateMraPlus10Penalty(
-    annuity.annualAnnuity,
-    input.personal.dateOfBirth,
-    input.employment.plannedRetirementDate,
-    mra,
-    totalServiceDecimal
-  );
+  // calculateMraPlus10Penalty re-derives eligibility internally, so it can't
+  // see the special-provision exemption — gate it here. LEO/FF/ATC retire
+  // unreduced and never take the 5%/yr MRA+10 reduction.
+  const mraPlus10 = isSpecialProvisionType
+    ? { applies: false, penaltyPercent: 0, monthsUnder62: 0, reducedAnnuity: annuity.annualAnnuity }
+    : calculateMraPlus10Penalty(
+        annuity.annualAnnuity,
+        input.personal.dateOfBirth,
+        input.employment.plannedRetirementDate,
+        mra,
+        totalServiceDecimal
+      );
 
   // Apply MRA+10 penalty to annuity if applicable
   const effectiveAnnualAnnuity = mraPlus10.applies
@@ -118,7 +133,9 @@ export function calculateReport(input: ReportInput): CalculationResult {
   const annuityAfterSurvivor = effectiveAnnualAnnuity - survivorBenefit.annualCost;
 
   // ---- FERS Supplement ----
-  // Determine FERS service years for supplement calculation
+  // Determine FERS service years for the supplement. Unlike the annuity, the
+  // SRS uses CIVILIAN service only — unused sick leave and military service do
+  // NOT count — and OPM truncates to whole years before dividing by 40.
   let fersServiceYears: number;
   if (input.employment.retirementSystem === 'FERS_TRANSFER') {
     fersServiceYears = serviceToDecimalYears(
@@ -126,8 +143,12 @@ export function calculateReport(input: ReportInput): CalculationResult {
       input.employment.fersServiceMonths ?? 0
     );
   } else {
-    fersServiceYears = totalServiceDecimal;
+    fersServiceYears = serviceToDecimalYears(
+      service.civilianYears,
+      service.civilianMonths
+    );
   }
+  fersServiceYears = Math.floor(fersServiceYears);
 
   const fersSupplement = calculateFersSupplement(
     input.socialSecurity.estimatedBenefitAge62,

@@ -75,6 +75,27 @@ function mapSurvivor(v: string): SurvivorElection {
   return "NONE";
 }
 
+/**
+ * The FBI stores one SS benefit figure + a claiming age. The FERS Supplement
+ * formula ALWAYS needs the age-62 estimate, so we derive both endpoints:
+ *   - if the stored benefit is at/before 62, it IS the age-62 figure
+ *   - if it's an FRA (67) figure, approximate 62 ≈ 70% of FRA (the SSA
+ *     reduction for FRA 67), and vice-versa
+ * Best practice is to store the actual SSA age-62 estimate; this keeps the
+ * supplement from silently computing $0 when only the FRA figure is on file.
+ */
+function socialSecurityInput(state: PlanState) {
+  const ssMonthly = state.SS_FERS_Monthly_Benefit__c || 0;
+  const startAge = state.SS_FERS_Start_Age__c || 62;
+  const est62 = startAge <= 62 ? ssMonthly : Math.round(ssMonthly * 0.7);
+  const estFRA = startAge >= 67 ? ssMonthly : Math.round(ssMonthly / 0.7);
+  return {
+    estimatedBenefitAge62: est62,
+    estimatedBenefitFRA: estFRA,
+    plannedStartAge: startAge,
+  };
+}
+
 export function buildReportInput(
   state: PlanState,
   meta: { fullName: string; dateOfBirth: string; address: string | null },
@@ -169,11 +190,7 @@ export function buildReportInput(
       biweeklyPremium: state.FEHB_Biweekly_Premium__c || 200,
       premiumIncreaseRate: (state.FEHB_Annual_Increase__c || 6) / 100,
     },
-    socialSecurity: {
-      estimatedBenefitAge62: 0,
-      estimatedBenefitFRA: state.SS_FERS_Monthly_Benefit__c || 0,
-      plannedStartAge: state.SS_FERS_Start_Age__c || 67,
-    },
+    socialSecurity: socialSecurityInput(state),
     ltc: { enrolled: false, currentPremium: 0, dailyBenefitAmount: 0, benefitPeriodYears: 3 },
     otherIncome: {
       otherPensions: 0,
