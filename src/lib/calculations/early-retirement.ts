@@ -44,6 +44,12 @@ export function isMraPlus10Retirement(
   // If age >= 60 with 20+ years, this is unreduced (not MRA+10)
   if (ageAtRetirement >= 60 && serviceYears >= 20) return false;
 
+  // MRA + 30 years is an immediate UNREDUCED retirement (5 USC 8412(a)) —
+  // NOT MRA+10. The "30-and-out at MRA" profile is the most common federal
+  // retirement; without this carve-out it gets a bogus 5%/yr penalty AND a
+  // zeroed FERS Supplement. MRA+10 is specifically MRA with 10–29 years.
+  if (serviceYears >= 30) return false;
+
   // Otherwise, this is MRA+10 with penalty
   return true;
 }
