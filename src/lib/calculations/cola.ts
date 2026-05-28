@@ -103,40 +103,45 @@ export function calculateColaProjections(
   retirementYear: number,
   projectionYears: number = 30,
   retirementMonth: number = 0,
+  ageAtRetirement: number = 62,
+  colaStartsImmediately: boolean = true,
 ): ColaProjection[] {
+  // FERS COLA rule: regular FERS retirees receive NO COLA until age 62 (5 USC
+  // 8462(c)). Exempt — COLA from retirement — are CSRS, CSRS Offset, FERS
+  // special provisions (LEO/FF/ATC), disability, and survivor annuitants;
+  // those callers pass colaStartsImmediately=true. Before 62 the annuity is
+  // frozen at its starting amount; the first COLA lands the year the retiree
+  // turns 62.
   const projections: ColaProjection[] = [];
   let currentAnnuity = startingAnnualAnnuity;
   const proration = firstYearColaProration(retirementMonth);
+  let firstColaApplied = false;
 
   for (let i = 0; i < projectionYears; i++) {
     const year = retirementYear + i;
+    const ageThisYear = ageAtRetirement + i;
+    const colaEligibleThisYear = i > 0 && (colaStartsImmediately || ageThisYear >= 62);
 
-    if (i === 0) {
-      // Retirement year — annuity starts at unreduced amount; no COLA yet.
+    if (!colaEligibleThisYear) {
+      // Retirement year, or a pre-62 year for a regular FERS retiree: frozen.
       projections.push({
         year,
         colaRate: 0,
         annuityAfterCola: Math.round(currentAnnuity * 100) / 100,
       });
-    } else if (i === 1) {
-      // First COLA after retirement is prorated.
-      const baseCola = getColaRate(retirementSystem, cpiAssumption);
-      const cola = baseCola * proration;
-      currentAnnuity = currentAnnuity * (1 + cola);
-      projections.push({
-        year,
-        colaRate: Math.round(cola * 10000) / 10000,
-        annuityAfterCola: Math.round(currentAnnuity * 100) / 100,
-      });
-    } else {
-      const cola = getColaRate(retirementSystem, cpiAssumption);
-      currentAnnuity = currentAnnuity * (1 + cola);
-      projections.push({
-        year,
-        colaRate: Math.round(cola * 10000) / 10000,
-        annuityAfterCola: Math.round(currentAnnuity * 100) / 100,
-      });
+      continue;
     }
+
+    const baseCola = getColaRate(retirementSystem, cpiAssumption);
+    // Prorate only the very first COLA the retiree actually receives.
+    const cola = !firstColaApplied ? baseCola * proration : baseCola;
+    firstColaApplied = true;
+    currentAnnuity = currentAnnuity * (1 + cola);
+    projections.push({
+      year,
+      colaRate: Math.round(cola * 10000) / 10000,
+      annuityAfterCola: Math.round(currentAnnuity * 100) / 100,
+    });
   }
 
   return projections;

@@ -173,7 +173,13 @@ export function calculateReport(input: ReportInput): CalculationResult {
   );
 
   // ---- COLA Projections ----
+  // Regular FERS gets no COLA until 62; CSRS/CSRS-Offset and FERS special
+  // provisions (LEO/FF/ATC) get it immediately.
   const retirementMonth = parseISO(input.employment.plannedRetirementDate).getMonth();
+  const colaStartsImmediately =
+    input.employment.retirementSystem === 'CSRS' ||
+    input.employment.retirementSystem === 'CSRS_OFFSET' ||
+    isSpecialProvisionType;
   const colaProjections = calculateColaProjections(
     annuityAfterSurvivor,
     input.employment.retirementSystem,
@@ -181,6 +187,8 @@ export function calculateReport(input: ReportInput): CalculationResult {
     retirementYear,
     projectionYears,
     retirementMonth,
+    ageAtRetirement,
+    colaStartsImmediately,
   );
 
   // ---- TSP ----
@@ -264,10 +272,14 @@ export function calculateReport(input: ReportInput): CalculationResult {
   );
 
   // ---- Delayed Retirement (1 year later) ----
+  // Use CIVILIAN service + 1 as the creditable base — calculateAnnuityWithAge
+  // re-adds sick leave + military inside calculateTotalService, so passing
+  // total service here would double-count them and overstate the "work one
+  // more year" gain that clients use to decide whether to keep working.
   const delayedRetirementDate = addYears(retirementDate, 1);
   const delayedAge = ageAtRetirement + 1;
-  const delayedServiceYears = service.totalYears + 1;
-  const delayedServiceMonths = service.totalMonths;
+  const delayedServiceYears = service.civilianYears + 1;
+  const delayedServiceMonths = service.civilianMonths;
 
   // Recalculate annuity for delayed retirement
   const delayedEmployment = {

@@ -341,9 +341,11 @@ export function calculateYearlyProjections(
     const ssProjection = ss.yearlyProjections.find((p) => p.year === year);
     const ssAmount = ssProjection ? ssProjection.annualBenefit : 0;
 
-    // TSP withdrawal (adjusted for inflation)
-    const tspWithdrawal =
-      tsp.annualWithdrawal * Math.pow(1 + colaAssumption, i);
+    // TSP withdrawal — the engine models a FIXED monthly payment (balance
+    // spread to a target age), which does NOT grow with inflation. Indexing it
+    // by COLA overstated late-year TSP income (~+80% by year 30 at 2%). Keep
+    // it flat to match the fixed-payment method actually computed.
+    const tspWithdrawal = tsp.annualWithdrawal;
 
     // Other income (adjusted for inflation)
     const otherIncome = otherIncomeAnnual * Math.pow(1 + colaAssumption, i);

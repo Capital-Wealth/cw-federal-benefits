@@ -75,6 +75,11 @@ const cases: Case[] = [
       { label: "annuity unreduced (NOT $22,500)", got: r.annuity.annualAnnuity, want: 30000, tolerance: 200 },
       { label: "supplement eligible", got: r.fersSupplement.eligible, want: true },
       { label: "SRS = SS62 × 30/40 = 1500", got: r.fersSupplement.monthlyAmount, want: 1500, tolerance: 30 },
+      // F12: regular FERS gets NO COLA before 62. Retire at 57 → ages 58 (yr1)
+      // and 61 (yr4) frozen at the base; age 62 (yr5) is the first COLA.
+      { label: "no COLA at 58 (yr1 frozen)", got: r.colaProjections[1].annuityAfterCola, want: 30000, tolerance: 1 },
+      { label: "no COLA at 61 (yr4 frozen)", got: r.colaProjections[4].annuityAfterCola, want: 30000, tolerance: 1 },
+      { label: "COLA begins at 62 (yr5 > base)", got: r.colaProjections[5].annuityAfterCola > 30000, want: true },
     ],
   },
   {
@@ -101,6 +106,8 @@ const cases: Case[] = [
       { label: "effective multiplier ~40%", got: r.annuity.annualAnnuity / r.annuity.high3Average, want: 0.402, tolerance: 0.01 },
       { label: "supplement eligible (LEO @ 20yr)", got: r.fersSupplement.eligible, want: true },
       { label: "SRS ≈ $1,671 (SS62 × 25/40)", got: r.fersSupplement.monthlyAmount, want: 1671, tolerance: 15 },
+      // F12: LEO is exempt from the under-62 COLA freeze — COLA applies at 58 (yr1).
+      { label: "LEO COLA applies immediately (yr1 > base)", got: r.colaProjections[1].annuityAfterCola > r.colaProjections[0].annuityAfterCola, want: true },
     ],
   },
 ];
