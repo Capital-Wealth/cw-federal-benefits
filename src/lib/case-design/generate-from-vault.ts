@@ -233,9 +233,11 @@ async function loadVaultIntakes(
 ): Promise<VaultBundle> {
   // Compute the set of fields we need on each Vault object from the CMT
   // mappings, so we only SELECT what's actually used. Saves bytes + survives
-  // future Vault-schema additions without hardcoding.
-  const generalFields = new Set<string>(["Id", "Contact__c", "AI_Parse_Confidence__c", "AI_Parsed_Date__c", "Fields_Needing_Review__c", "Date_of_Birth__c", "Employment_Status__c", "Employer__c", "Spouse_Name__c", "Spouse_DOB__c", "Spouse_Annual_Income__c"]);
-  const federalFields = new Set<string>(["Id", "Contact__c", "AI_Parse_Confidence__c", "AI_Parsed_Date__c", "Fields_Needing_Review__c", "Date_of_Birth__c", "Spouse_DOB__c", "Spouse_Retirement_Savings__c"]);
+  // future Vault-schema additions without hardcoding. Keep the starter set
+  // MINIMAL to avoid FLS-blocked-field errors that would silently empty the
+  // entire query — anything optional is added only when a mapping needs it.
+  const generalFields = new Set<string>(["Id", "Contact__c", "AI_Parse_Confidence__c", "AI_Parsed_Date__c", "Fields_Needing_Review__c"]);
+  const federalFields = new Set<string>(["Id", "Contact__c", "AI_Parse_Confidence__c", "AI_Parsed_Date__c", "Fields_Needing_Review__c"]);
   for (const m of vaultMappings) {
     if (!m.Active__c) continue;
     const target = m.Source_Object__c === "Federal_Benefits_Intake__c" ? federalFields : generalFields;
