@@ -13,7 +13,7 @@
  * Auth still HMAC token (advisor-only); SSO swap lands separately.
  */
 
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { LivePlanSession } from "@/lib/plan/token";
 import { calculateReport } from "@/lib/calculations";
 import { buildReportInput, type PlanState } from "@/lib/plan/buildReportInput";
@@ -172,6 +172,19 @@ export default function LivePlanClient({
   const [generating, setGenerating] = useState(false);
   const [reparsing, setReparsing] = useState(false);
   const [message, setMessage] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [docs, setDocs] = useState<{ id: string; title: string; fileType: string; sizeBytes: number }[]>([]);
+
+  const sessionToken = typeof window !== "undefined"
+    ? new URLSearchParams(window.location.search).get("session")
+    : null;
+
+  useEffect(() => {
+    if (!sessionToken) return;
+    fetch(`/api/plan/documents?token=${sessionToken}`)
+      .then((r) => (r.ok ? r.json() : { documents: [] }))
+      .then((d) => setDocs(d.documents || []))
+      .catch(() => {});
+  }, [sessionToken]);
 
   // Presentation highlighting (screen-only, per meeting).
   const [highlightMode, setHighlightMode] = useState(false);
@@ -506,6 +519,44 @@ export default function LivePlanClient({
                 color: message.kind === "ok" ? "#065f46" : "#991b1b",
               }}>
                 {message.text}
+              </div>
+            )}
+          </div>
+
+          {/* Source documents — view the uploaded LES / SF-50 / TSP / SSA
+              statements alongside the report to audit the numbers in real time. */}
+          <div style={{ background: "#fff", padding: 20, borderRadius: 4, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", marginTop: 16 }}>
+            <div style={{ fontSize: 10, color: "#C7A356", letterSpacing: 3, fontWeight: 600 }}>SOURCE DOCUMENTS</div>
+            <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: 20, color: "#16253C", margin: "4px 0 12px" }}>
+              Uploaded Documents{docs.length ? ` (${docs.length})` : ""}
+            </h2>
+            {docs.length === 0 ? (
+              <p style={{ fontSize: 12, color: "#6B7280", lineHeight: 1.5 }}>
+                No documents attached to this record yet.
+              </p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {docs.map((d) => (
+                  <a
+                    key={d.id}
+                    href={`/api/plan/document/${d.id}?token=${sessionToken}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      gap: 10, padding: "8px 10px", borderRadius: 4,
+                      border: "1px solid #E5E7EB", textDecoration: "none",
+                      background: "#fafbfc",
+                    }}
+                  >
+                    <span style={{ fontSize: 12, color: "#16253C", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      📄 {d.title}
+                    </span>
+                    <span style={{ fontSize: 10, color: "#6B7280", flexShrink: 0 }}>
+                      {d.fileType} · {(d.sizeBytes / 1024).toFixed(0)} KB · View ↗
+                    </span>
+                  </a>
+                ))}
               </div>
             )}
           </div>
