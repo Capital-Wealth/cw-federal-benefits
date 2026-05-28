@@ -88,20 +88,24 @@ export function calculateReport(input: ReportInput): CalculationResult {
   );
 
   // ---- MRA+10 Penalty ----
-  // calculateMraPlus10Penalty re-derives eligibility internally, so it can't
-  // see the special-provision exemption — gate it here. LEO/FF/ATC retire
-  // unreduced and never take the 5%/yr MRA+10 reduction.
-  const mraPlus10 = isSpecialProvisionType
-    ? { applies: false, penaltyPercent: 0, monthsUnder62: 0, reducedAnnuity: annuity.annualAnnuity }
-    : calculateMraPlus10Penalty(
-        annuity.annualAnnuity,
-        input.personal.dateOfBirth,
-        input.employment.plannedRetirementDate,
-        mra,
-        totalServiceDecimal
-      );
+  // `isMra10` (computed above) is the SINGLE source of truth for whether the
+  // 5%/yr reduction applies — it uses an integer age and the special-provision
+  // exemption. calculateMraPlus10Penalty re-derives eligibility with a
+  // 365.25-day FLOAT age that disagrees at the 60.0/62.0 boundaries (e.g. age
+  // exactly 60 with 20 yrs is unreduced, but float age 59.997 wrongly triggered
+  // the penalty). So we use it only for the reduction MAGNITUDE, gated by
+  // isMra10 for WHETHER it applies.
+  const mraPlus10Raw = calculateMraPlus10Penalty(
+    annuity.annualAnnuity,
+    input.personal.dateOfBirth,
+    input.employment.plannedRetirementDate,
+    mra,
+    totalServiceDecimal
+  );
+  const mraPlus10 = isMra10
+    ? mraPlus10Raw
+    : { applies: false, penaltyPercent: 0, monthsUnder62: 0, reducedAnnuity: annuity.annualAnnuity };
 
-  // Apply MRA+10 penalty to annuity if applicable
   const effectiveAnnualAnnuity = mraPlus10.applies
     ? mraPlus10.reducedAnnuity
     : annuity.annualAnnuity;
