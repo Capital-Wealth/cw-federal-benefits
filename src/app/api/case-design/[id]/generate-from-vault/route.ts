@@ -11,14 +11,33 @@
  */
 import type { NextRequest } from "next/server";
 import { loadCaseDesign } from "@/lib/case-design/sf-client";
-import { generateFromVault } from "@/lib/case-design/generate-from-vault";
+import {
+  generateFromVault,
+  resetGeneratedCaseDesign,
+} from "@/lib/case-design/generate-from-vault";
 
-export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
+  const reset = req.nextUrl.searchParams.get("reset") === "1";
   try {
-    const bundle = await loadCaseDesign(id);
+    let bundle = await loadCaseDesign(id);
     if (!bundle) {
       return Response.json({ error: "Case Design not found" }, { status: 404 });
+    }
+    // Reset & Regenerate (Q8): wipe existing positions/edges + audit stamp, then
+    // reload so generateFromVault sees a clean Draft. Draft-only for safety.
+    if (reset) {
+      if (bundle.parent.Status__c !== "Draft") {
+        return Response.json(
+          { error: "Reset & Regenerate is only allowed on Draft Case Designs" },
+          { status: 409 },
+        );
+      }
+      await resetGeneratedCaseDesign(id);
+      bundle = await loadCaseDesign(id);
+      if (!bundle) {
+        return Response.json({ error: "Case Design not found" }, { status: 404 });
+      }
     }
     const result = await generateFromVault(id, bundle);
     const status =

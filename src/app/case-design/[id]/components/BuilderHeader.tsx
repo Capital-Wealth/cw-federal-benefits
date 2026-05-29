@@ -45,6 +45,8 @@ interface BuilderHeaderProps {
   onDownloadPdf: () => void;
   onToggleAdvanced: () => void;
   advancedOpen: boolean;
+  onResetRegenerate: () => void;
+  canResetRegenerate: boolean;
 }
 
 export default function BuilderHeader(props: BuilderHeaderProps) {
@@ -62,6 +64,8 @@ export default function BuilderHeader(props: BuilderHeaderProps) {
     onDownloadPdf,
     onToggleAdvanced,
     advancedOpen,
+    onResetRegenerate,
+    canResetRegenerate,
   } = props;
 
   const locked = parent.Status__c === "Locked";
@@ -139,6 +143,8 @@ export default function BuilderHeader(props: BuilderHeaderProps) {
           householdSfUrl={householdSfUrl}
           caseDesignSfUrl={caseDesignSfUrl}
           householdLabel={householdLabel}
+          onResetRegenerate={onResetRegenerate}
+          canResetRegenerate={canResetRegenerate}
         />
 
         <PrimaryCTA
@@ -332,6 +338,8 @@ function OverflowMenu({
   householdSfUrl,
   caseDesignSfUrl,
   householdLabel,
+  onResetRegenerate,
+  canResetRegenerate,
 }: {
   onGeneratePdf: () => void;
   onSoftFinalize: () => void;
@@ -342,6 +350,8 @@ function OverflowMenu({
   householdSfUrl: string | null;
   caseDesignSfUrl: string;
   householdLabel: string;
+  onResetRegenerate: () => void;
+  canResetRegenerate: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -407,6 +417,19 @@ function OverflowMenu({
             hint="Generate & upload PDF — no Opps created"
             disabled={locked}
           />
+          {canResetRegenerate && (
+            <>
+              <div className="my-1 border-t border-zinc-100" />
+              <MenuItem
+                onClick={() => {
+                  onResetRegenerate();
+                  setOpen(false);
+                }}
+                label="Reset & Regenerate from Vault"
+                hint="Delete all positions/edges and rebuild"
+              />
+            </>
+          )}
           <div className="my-1 border-t border-zinc-100" />
           <MenuItem
             onClick={() => {

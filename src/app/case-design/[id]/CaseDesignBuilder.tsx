@@ -22,6 +22,7 @@ import EditPanel from "./components/EditPanel";
 import AdvancedDrawer, { AdvancedDrawerButton } from "./components/AdvancedDrawer";
 import Celebrate from "./components/Celebrate";
 import HouseholdSummaryStrip from "./components/HouseholdSummaryStrip";
+import AuditChecklistPanel from "./components/AuditChecklistPanel";
 
 type PlanType =
   | "Rollover"
@@ -112,7 +113,7 @@ export default function CaseDesignBuilder({
   const [toast, setToast] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
   const [confirmingAction, setConfirmingAction] = useState<
     null | {
-      kind: "finalize" | "confirm" | "delete-tab";
+      kind: "finalize" | "confirm" | "delete-tab" | "reset";
       message: string;
       onYes: () => void;
     }
@@ -243,6 +244,68 @@ export default function CaseDesignBuilder({
       }
     })();
   }, [parent.Id, parent.Status__c, locked, bundle.positions.length, bundle.edges.length, refetch]);
+
+  // --- Reset & Regenerate (Q8) — overflow menu action ---
+  //
+  // Wipes the current positions/edges + audit stamp server-side, then re-runs
+  // generate-from-vault on the now-clean Draft. Gated behind a confirm dialog.
+  const handleResetRegenerate = useCallback(() => {
+    setConfirmingAction({
+      kind: "reset",
+      message:
+        "This will delete all current positions and arrows, then rebuild the Money Map from Vault data. Any manual edits will be lost.",
+      onYes: () => {
+        setConfirmingAction(null);
+        setVaultGeneratedSummary(null);
+        setAutoFilling(true);
+        (async () => {
+          try {
+            const res = await fetch(
+              `/api/case-design/${parent.Id}/generate-from-vault?reset=1`,
+              { method: "POST" }
+            );
+            const data = (await res.json().catch(() => ({}))) as {
+              status?: string;
+              sourcesCreated?: number;
+              destinationsCreated?: number;
+              edgesCreated?: number;
+              keepCount?: number;
+              lowConfidenceCount?: number;
+              fieldsNeedingReview?: string;
+              error?: string;
+              reasonIfSkipped?: string;
+            };
+            await refetch();
+            if (data.status === "ok" && (data.sourcesCreated ?? 0) > 0) {
+              setVaultGeneratedSummary({
+                sourcesCreated: data.sourcesCreated ?? 0,
+                destinationsCreated: data.destinationsCreated ?? 0,
+                edgesCreated: data.edgesCreated ?? 0,
+                keepCount: data.keepCount ?? 0,
+                lowConfidenceCount: data.lowConfidenceCount ?? 0,
+                fieldsNeedingReview: data.fieldsNeedingReview ?? "",
+              });
+              setToast({
+                kind: "ok",
+                msg: `Regenerated ${data.sourcesCreated} sources, ${data.destinationsCreated} destinations, ${data.edgesCreated} arrows from Vault.`,
+              });
+            } else if (data.status === "skipped-no-vault") {
+              setToast({
+                kind: "ok",
+                msg: "Reset complete — no Vault data to regenerate from. Build manually or load from Meeting 1.",
+              });
+            } else if (!res.ok) {
+              setToast({ kind: "err", msg: data.error || data.reasonIfSkipped || "Reset failed" });
+            }
+          } catch (e) {
+            setToast({ kind: "err", msg: e instanceof Error ? e.message : "Reset failed" });
+          } finally {
+            setAutoFilling(false);
+          }
+        })();
+      },
+    });
+  }, [parent.Id, refetch]);
 
   // --- Auto-fill from Salesforce on first open ---
   //
@@ -668,6 +731,12 @@ export default function CaseDesignBuilder({
         onDownloadPdf={downloadPdf}
         onToggleAdvanced={() => setAdvancedOpen((x) => !x)}
         advancedOpen={advancedOpen}
+        onResetRegenerate={handleResetRegenerate}
+        canResetRegenerate={
+          !locked &&
+          parent.Status__c === "Draft" &&
+          (sources.length > 0 || destinations.length > 0)
+        }
       />
 
       {/* Meeting-progression tabs — each tab is one meeting stage / page */}
@@ -810,6 +879,16 @@ export default function CaseDesignBuilder({
         />
       )}
 
+      {vaultGeneratedSummary && (
+        <AuditChecklistPanel
+          summary={vaultGeneratedSummary}
+          sources={sources}
+          destinations={destinations}
+          onJumpTo={(id) => setSelectedPositionId(id)}
+          onDismiss={() => setVaultGeneratedSummary(null)}
+        />
+      )}
+
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
 
       {confirmingAction && (
@@ -821,13 +900,16 @@ export default function CaseDesignBuilder({
               ? "Lock & create Opps"
               : confirmingAction.kind === "delete-tab"
                 ? "Delete tab"
-                : "Finalize"
+                : confirmingAction.kind === "reset"
+                  ? "Reset & Regenerate"
+                  : "Finalize"
           }
           onCancel={() => setConfirmingAction(null)}
           onConfirm={confirmingAction.onYes}
           danger={
             confirmingAction.kind === "confirm" ||
-            confirmingAction.kind === "delete-tab"
+            confirmingAction.kind === "delete-tab" ||
+            confirmingAction.kind === "reset"
           }
         />
       )}
@@ -949,7 +1031,7 @@ function ConfirmDialog({
   onConfirm,
   danger,
 }: {
-  kind: "finalize" | "confirm" | "delete-tab";
+  kind: "finalize" | "confirm" | "delete-tab" | "reset";
   message: string;
   confirmLabel: string;
   onCancel: () => void;
@@ -961,7 +1043,9 @@ function ConfirmDialog({
       ? "Delete this tab?"
       : kind === "confirm"
         ? "Lock this Case Design?"
-        : "Finalize?";
+        : kind === "reset"
+          ? "Reset & Regenerate?"
+          : "Finalize?";
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
       <div

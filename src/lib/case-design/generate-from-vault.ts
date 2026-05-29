@@ -678,38 +678,16 @@ export async function generateFromVault(
   }
 
   if (pending.length === 0) {
-    const personCount = persons.length;
-    const generalRows = vaults.general.size;
-    const federalRows = vaults.federal.size;
-    const mappingCount = cmts.vaultMappings.length;
-    let totalChecked = 0;
-    let totalNonZero = 0;
-    const sampleAmounts: string[] = [];
-    for (const person of persons) {
-      for (const mapping of cmts.vaultMappings) {
-        totalChecked += 1;
-        const vault =
-          mapping.Source_Object__c === "Federal_Benefits_Intake__c"
-            ? vaults.federal.get(person.ContactId)
-            : vaults.general.get(person.ContactId);
-        if (!vault) continue;
-        let amt = 0;
-        if (mapping.Aggregate_Fields__c) {
-          for (const f of mapping.Aggregate_Fields__c.split(",").map((s) => s.trim())) {
-            const v = vault[f];
-            if (typeof v === "number") amt += v;
-          }
-        } else if (mapping.Source_Field__c) {
-          const v = vault[mapping.Source_Field__c];
-          if (typeof v === "number") amt = v;
-        }
-        if (amt > 0) totalNonZero += 1;
-        if (sampleAmounts.length < 5) sampleAmounts.push(`${mapping.DeveloperName}=${amt}`);
-      }
-    }
+    // Nothing mapped: either no parsed Vault rows at all (→ client falls back to
+    // the legacy Opp-history auto-fill), or rows exist but every balance was
+    // below its mapping's minimum. Distinguish the two so the advisor knows
+    // whether the Vault was empty vs. simply had no qualifying balances.
+    const hadVaultRows = vaults.general.size > 0 || vaults.federal.size > 0;
     return makeSkipResult(
       "skipped-no-vault",
-      `Diag: persons=${personCount} genRows=${generalRows} fedRows=${federalRows} mappings=${mappingCount} checked=${totalChecked} nonZero=${totalNonZero} sample=[${sampleAmounts.join(", ")}]`,
+      hadVaultRows
+        ? "Vault data found, but no account balance met its minimum to map — falling back to other sources"
+        : "No parsed Vault data for this household — falling back to other sources",
     );
   }
 
@@ -878,6 +856,38 @@ export async function generateFromVault(
   }
 
   return result;
+}
+
+/**
+ * Reset a previously-generated Case Design back to a clean Draft so it can be
+ * regenerated from Vault (the "Reset & Regenerate" overflow action / Q8).
+ * Deletes child edges (FK to positions) first, then positions, then clears the
+ * audit stamp so generateFromVault no longer refuses with skipped-existing.
+ * Caller must enforce Draft-only.
+ */
+export async function resetGeneratedCaseDesign(caseDesignId: string): Promise<void> {
+  const cdId = safeId(caseDesignId);
+  const conn = await getSFConnection();
+
+  const edges = await conn.query<{ Id: string }>(
+    `SELECT Id FROM Case_Design_Edge__c WHERE Case_Design__c = '${cdId}'`,
+  );
+  if (edges.records.length > 0) {
+    await conn.sobject("Case_Design_Edge__c").destroy(edges.records.map((e) => e.Id));
+  }
+
+  const positions = await conn.query<{ Id: string }>(
+    `SELECT Id FROM Case_Design_Position__c WHERE Case_Design__c = '${cdId}'`,
+  );
+  if (positions.records.length > 0) {
+    await conn.sobject("Case_Design_Position__c").destroy(positions.records.map((p) => p.Id));
+  }
+
+  await conn.sobject("Case_Design__c").update({
+    Id: cdId,
+    Generated_From_Vault_At__c: null,
+    Generation_Summary__c: null,
+  });
 }
 
 function makeSkipResult(
