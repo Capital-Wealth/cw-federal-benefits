@@ -109,6 +109,29 @@ function MoneyMapNodeInner({ data, selected }: NodeProps<MoneyMapNodeType>) {
         </span>
       )}
 
+      {/* Source Reconciliation provenance badge — top-left. ✓ when a parsed
+          source confirms this balance; otherwise the source confidence %. */}
+      {(p.Verified__c || p.Source_Confidence__c != null) && (
+        <span
+          className={`absolute -top-2 left-1 z-10 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold shadow-sm pointer-events-none ${
+            p.Verified__c ? "bg-emerald-600 text-white" : "bg-amber-500 text-white"
+          }`}
+          title={
+            p.Verified__c
+              ? `Verified by a parsed source (${p.Source_Confidence__c ?? 0}% confidence)`
+              : `Source confidence ${p.Source_Confidence__c ?? 0}%`
+          }
+          aria-label={p.Verified__c ? "Verified source" : "Unverified source"}
+        >
+          {p.Verified__c && (
+            <svg className="w-2 h-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M5 13l4 4L19 7" />
+            </svg>
+          )}
+          {p.Source_Confidence__c != null ? `${p.Source_Confidence__c}%` : "✓"}
+        </span>
+      )}
+
       <div
         className={`bg-white rounded-lg px-3 py-2.5 cursor-pointer transition-shadow duration-200 motion-reduce:transition-none ${
           selected

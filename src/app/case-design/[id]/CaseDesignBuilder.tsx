@@ -17,6 +17,7 @@ import Diagram from "./Diagram";
 import BuilderHeader from "./components/BuilderHeader";
 import AccountColumn from "./components/AccountColumn";
 import EditPanel from "./components/EditPanel";
+import DataConfidencePanel from "./components/DataConfidencePanel";
 import AdvancedDrawer, { AdvancedDrawerButton } from "./components/AdvancedDrawer";
 import Celebrate from "./components/Celebrate";
 import HouseholdSummaryStrip from "./components/HouseholdSummaryStrip";
@@ -92,12 +93,16 @@ export default function CaseDesignBuilder({
     addAnnotation,
     updateAnnotation,
     deleteAnnotation,
+    runReconciliation,
+    resolveConflict,
+    reconciling,
   } = hook;
   const { parent } = bundle;
   const locked = parent.Status__c === "Locked";
 
   const [selectedPositionId, setSelectedPositionId] = useState<string | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [confidenceOpen, setConfidenceOpen] = useState(false);
   const [householdAssets, setHouseholdAssets] = useState<MeetingIntakeAsset[]>([]);
   const [toast, setToast] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
   const [confirmingAction, setConfirmingAction] = useState<
@@ -517,6 +522,9 @@ export default function CaseDesignBuilder({
         onDownloadPdf={downloadPdf}
         onToggleAdvanced={() => setAdvancedOpen((x) => !x)}
         advancedOpen={advancedOpen}
+        onToggleDataConfidence={() => setConfidenceOpen((x) => !x)}
+        dataConfidencePct={parent.Data_Confidence_Pct__c}
+        hasUnresolvedConflicts={parent.Has_Unresolved_Conflicts__c}
       />
 
       {/* Household summary strip — instant context for "what are we working with" */}
@@ -642,6 +650,16 @@ export default function CaseDesignBuilder({
           onClose={() => setSelectedPositionId(null)}
           onUpdate={updatePosition}
           onDelete={deletePosition}
+        />
+      )}
+
+      {confidenceOpen && (
+        <DataConfidencePanel
+          parent={parent}
+          reconciling={reconciling}
+          onClose={() => setConfidenceOpen(false)}
+          onRun={runReconciliation}
+          onResolveConflict={resolveConflict}
         />
       )}
 

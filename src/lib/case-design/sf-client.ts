@@ -41,6 +41,8 @@ const PARENT_FIELDS = [
   "PDF_ContentVersion_Id__c", "PDF_Vault_Document_Id__c",
   "Finalized_At__c", "Presented_At__c", "Locked_At__c",
   "Total_Source_Value__c", "Total_Destination_Value__c",
+  "Data_Confidence_Pct__c", "Last_Reconciled_At__c",
+  "Reconciliation_Report__c", "Has_Unresolved_Conflicts__c",
 ].join(", ");
 
 const SECTION_FIELDS = [
@@ -56,6 +58,7 @@ const POSITION_FIELDS = [
   "Amount__c", "Account_Value__c", "Surrender_Value__c", "Cash_Value__c", "Death_Benefit__c",
   "Annual_Fee_Pct__c", "Annual_Fee_Display__c", "Fee_Is_Approximate__c",
   "Contribution_Note__c", "Position_X__c", "Position_Y__c", "Replaces_Position__c",
+  "Source_Confidence__c", "Verified__c",
 ].join(", ");
 
 const EDGE_FIELDS = [

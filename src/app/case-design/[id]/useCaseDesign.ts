@@ -14,6 +14,7 @@ import type {
   CaseDesignEdge,
   CaseDesignAnnotation,
 } from "@/lib/case-design/types";
+import type { ReconciliationReport } from "@/lib/case-design/reconcile";
 
 type Action =
   | { type: "set-bundle"; bundle: CaseDesignBundle }
@@ -124,11 +125,17 @@ interface UseCaseDesignReturn {
   addAnnotation(data: Partial<CaseDesignAnnotation>): Promise<string>;
   updateAnnotation(id: string, patch: Partial<CaseDesignAnnotation>): Promise<void>;
   deleteAnnotation(id: string): Promise<void>;
+  /** Run source reconciliation; persists confidence + report and refetches. */
+  runReconciliation(): Promise<ReconciliationReport>;
+  /** Resolve a Conflict by setting a position's Amount to the chosen figure, then re-reconcile. */
+  resolveConflict(positionId: string, amount: number): Promise<void>;
+  reconciling: boolean;
 }
 
 export function useCaseDesign(initial: CaseDesignBundle): UseCaseDesignReturn {
   const [bundle, dispatch] = useReducer(reducer, initial);
   const [inflight, setInflight] = useState(0);
+  const [reconciling, setReconciling] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const caseDesignId = initial.parent.Id;
 
@@ -245,6 +252,8 @@ export function useCaseDesign(initial: CaseDesignBundle): UseCaseDesignReturn {
         Position_X__c: data.Position_X__c ?? null,
         Position_Y__c: data.Position_Y__c ?? null,
         Replaces_Position__c: data.Replaces_Position__c ?? null,
+        Source_Confidence__c: data.Source_Confidence__c ?? null,
+        Verified__c: data.Verified__c ?? false,
       };
       dispatch({ type: "upsert-position", row: optimistic });
       scheduleRefetch();
@@ -450,12 +459,56 @@ export function useCaseDesign(initial: CaseDesignBundle): UseCaseDesignReturn {
     [caseDesignId, runRequest, scheduleRefetch]
   );
 
+  // ---- reconciliation ----
+  const runReconciliation = useCallback(async (): Promise<ReconciliationReport> => {
+    setReconciling(true);
+    try {
+      const report = await runRequest<ReconciliationReport>(
+        `/api/case-design/${caseDesignId}/reconcile`,
+        { method: "POST" },
+      );
+      // Reflect the persisted headline numbers immediately, then refetch to
+      // pull the per-position Verified/Source_Confidence stamps.
+      dispatch({
+        type: "patch-parent",
+        patch: {
+          Data_Confidence_Pct__c: report.coveragePct,
+          Has_Unresolved_Conflicts__c: report.hasUnresolvedConflicts,
+          Last_Reconciled_At__c: report.generatedAt,
+          Reconciliation_Report__c: JSON.stringify(report),
+        },
+      });
+      await refetch();
+      return report;
+    } finally {
+      setReconciling(false);
+    }
+  }, [caseDesignId, runRequest, refetch]);
+
+  const resolveConflict = useCallback(
+    async (positionId: string, amount: number) => {
+      // Optimistically set the chosen amount, persist it, then re-run
+      // reconciliation so the finding clears (or downgrades) server-side.
+      dispatch({ type: "patch-position", id: positionId, patch: { Amount__c: amount } });
+      await runRequest(`/api/case-design/${caseDesignId}/positions`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: positionId, Amount__c: amount }),
+      });
+      await runReconciliation();
+    },
+    [caseDesignId, runRequest, runReconciliation],
+  );
+
   return {
     bundle,
     saving: inflight > 0,
+    reconciling,
     lastSavedAt,
     refetch,
     updateParent,
+    runReconciliation,
+    resolveConflict,
     addPosition,
     updatePosition,
     deletePosition,

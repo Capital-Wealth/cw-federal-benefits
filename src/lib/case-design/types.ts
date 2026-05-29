@@ -102,6 +102,12 @@ export interface CaseDesignParent {
   Locked_At__c: string | null;
   Total_Source_Value__c: number | null;
   Total_Destination_Value__c: number | null;
+  /** Data-confidence reconciliation fields (Source Reconciliation feature). */
+  Data_Confidence_Pct__c: number | null;
+  Last_Reconciled_At__c: string | null;
+  /** JSON-stringified ReconciliationReport (LongText 131072). */
+  Reconciliation_Report__c: string | null;
+  Has_Unresolved_Conflicts__c: boolean;
 }
 
 export interface CaseDesignSection {
@@ -144,6 +150,9 @@ export interface CaseDesignPosition {
   Position_X__c: number | null;
   Position_Y__c: number | null;
   Replaces_Position__c: string | null;
+  /** Source-confidence reconciliation fields (Source Reconciliation feature). */
+  Source_Confidence__c: number | null;
+  Verified__c: boolean;
 }
 
 export interface CaseDesignEdge {

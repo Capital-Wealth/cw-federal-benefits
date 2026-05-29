@@ -63,6 +63,13 @@ export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: strin
     if (bundle.parent.Status__c === "Locked") {
       return Response.json({ error: "Case Design is already locked" }, { status: 400 });
     }
+    // Data-confidence gate (defense in depth — the UI also disables Present/Confirm).
+    if (bundle.parent.Has_Unresolved_Conflicts__c) {
+      return Response.json(
+        { error: "Resolve the outstanding data conflicts in the Data Confidence panel before presenting." },
+        { status: 409 },
+      );
+    }
 
     const destinations = bundle.positions.filter((p) => p.Role__c === "Destination");
     const sources = bundle.positions.filter((p) => p.Role__c === "Source");

@@ -45,6 +45,10 @@ interface BuilderHeaderProps {
   onDownloadPdf: () => void;
   onToggleAdvanced: () => void;
   advancedOpen: boolean;
+  /** Source Reconciliation feature: open the Data Confidence panel. */
+  onToggleDataConfidence: () => void;
+  dataConfidencePct: number | null;
+  hasUnresolvedConflicts: boolean;
 }
 
 export default function BuilderHeader(props: BuilderHeaderProps) {
@@ -62,13 +66,17 @@ export default function BuilderHeader(props: BuilderHeaderProps) {
     onDownloadPdf,
     onToggleAdvanced,
     advancedOpen,
+    onToggleDataConfidence,
+    dataConfidencePct,
+    hasUnresolvedConflicts,
   } = props;
 
   const locked = parent.Status__c === "Locked";
   const finalized = parent.Status__c === "Finalized" || parent.Status__c === "Presented";
   const hasSources = sourceCount > 0;
   const hasDestinations = destinationCount > 0;
-  const canConfirm = hasSources && hasDestinations && !locked;
+  // Finalize / Present are GATED while unresolved data conflicts exist.
+  const canConfirm = hasSources && hasDestinations && !locked && !hasUnresolvedConflicts;
 
   const selectedPlanTypes = new Set(
     (parent.Plan_Type__c || "").split(";").filter(Boolean) as PlanType[]
@@ -129,6 +137,12 @@ export default function BuilderHeader(props: BuilderHeaderProps) {
 
         <SaveIndicator saving={saving} lastSavedAt={lastSavedAt} />
 
+        <DataConfidenceBadge
+          pct={dataConfidencePct}
+          hasConflicts={hasUnresolvedConflicts}
+          onClick={onToggleDataConfidence}
+        />
+
         <OverflowMenu
           onGeneratePdf={onGeneratePdf}
           onSoftFinalize={onSoftFinalize}
@@ -148,6 +162,7 @@ export default function BuilderHeader(props: BuilderHeaderProps) {
           hasDestinations={hasDestinations}
           destinationCount={destinationCount}
           hasPdf={!!parent.PDF_ContentVersion_Id__c}
+          hasUnresolvedConflicts={hasUnresolvedConflicts}
           onConfirmAndCreate={onConfirmAndCreate}
           onDownloadPdf={onDownloadPdf}
         />
@@ -293,6 +308,49 @@ function PlanTypeChips({
         </div>
       )}
     </div>
+  );
+}
+
+/* ---------------- Data confidence badge ---------------- */
+
+function DataConfidenceBadge({
+  pct,
+  hasConflicts,
+  onClick,
+}: {
+  pct: number | null;
+  hasConflicts: boolean;
+  onClick: () => void;
+}) {
+  // Color: ≥90 green, 60-89 amber, <60 red. Null (never run) = neutral.
+  const tone =
+    pct == null
+      ? "bg-white/10 text-white/80 border-white/20"
+      : hasConflicts
+        ? "bg-rose-500/20 text-rose-100 border-rose-400/50"
+        : pct >= 90
+          ? "bg-emerald-500/20 text-emerald-100 border-emerald-400/50"
+          : pct >= 60
+            ? "bg-amber-500/20 text-amber-100 border-amber-400/50"
+            : "bg-rose-500/20 text-rose-100 border-rose-400/50";
+  const label = pct == null ? "Data —" : `Data ${pct}%`;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={
+        hasConflicts
+          ? "Unresolved data conflicts — open Data Confidence to resolve."
+          : "Open the Source Reconciliation / Data Confidence panel."
+      }
+      aria-label="Open data confidence panel"
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold rounded-full border cursor-pointer transition-colors duration-200 hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-[#C7A356] focus:ring-offset-1 focus:ring-offset-[#16253C] motion-reduce:transition-none ${tone}`}
+    >
+      {hasConflicts && (
+        <span className="inline-block w-1.5 h-1.5 rounded-full bg-rose-300 animate-pulse" aria-hidden="true" />
+      )}
+      {label}
+    </button>
   );
 }
 
@@ -487,6 +545,7 @@ function PrimaryCTA({
   hasDestinations,
   destinationCount,
   hasPdf,
+  hasUnresolvedConflicts,
   onConfirmAndCreate,
   onDownloadPdf,
 }: {
@@ -496,6 +555,7 @@ function PrimaryCTA({
   hasDestinations: boolean;
   destinationCount: number;
   hasPdf: boolean;
+  hasUnresolvedConflicts: boolean;
   onConfirmAndCreate: () => void;
   onDownloadPdf: () => void;
 }) {
@@ -514,6 +574,26 @@ function PrimaryCTA({
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
         </svg>
         Download PDF
+      </button>
+    );
+  }
+
+  // Data-confidence gate: block Finalize/Present while conflicts are unresolved.
+  // Only shows the conflict message when the map is otherwise ready (sources +
+  // destinations present) so the "Add a source/destination" guidance still
+  // takes priority when those are the real blocker.
+  if (hasUnresolvedConflicts && hasSources && hasDestinations) {
+    return (
+      <button
+        type="button"
+        disabled
+        title="Resolve the data conflicts in the Data Confidence panel before presenting."
+        className="inline-flex items-center gap-2 px-4 py-2 min-h-[44px] text-xs font-semibold whitespace-nowrap bg-white/15 text-white border border-rose-400/60 rounded-md cursor-not-allowed"
+      >
+        <svg className="w-3.5 h-3.5 text-rose-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+        </svg>
+        Resolve data conflicts
       </button>
     );
   }

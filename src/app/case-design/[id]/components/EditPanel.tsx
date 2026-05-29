@@ -222,11 +222,30 @@ export default function EditPanel({
           </div>
         )}
 
-        {position.Source_Vault_Document_Name__c && (
+        {(position.Source_Vault_Document_Name__c ||
+          position.Verified__c ||
+          position.Source_Confidence__c != null) && (
           <div>
-            <FieldLabel>Source document</FieldLabel>
-            <div className="text-xs text-zinc-700 px-3 py-2 border border-zinc-200 rounded-md bg-zinc-50 truncate">
-              {position.Source_Vault_Document_Name__c}
+            <FieldLabel>Source / Provenance</FieldLabel>
+            <div className="text-xs text-zinc-700 px-3 py-2 border border-zinc-200 rounded-md bg-zinc-50 space-y-1">
+              <div className="flex items-center gap-2">
+                {position.Verified__c ? (
+                  <span className="inline-flex items-center gap-1 text-emerald-700 font-semibold">
+                    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M5 13l4 4L19 7" />
+                    </svg>
+                    Verified
+                  </span>
+                ) : (
+                  <span className="text-amber-700 font-semibold">Unverified</span>
+                )}
+                {position.Source_Confidence__c != null && (
+                  <span className="text-zinc-500">· {position.Source_Confidence__c}% confidence</span>
+                )}
+              </div>
+              {position.Source_Vault_Document_Name__c && (
+                <div className="truncate text-zinc-600">{position.Source_Vault_Document_Name__c}</div>
+              )}
             </div>
           </div>
         )}
