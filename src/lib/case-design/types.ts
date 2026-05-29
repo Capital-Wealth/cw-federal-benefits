@@ -104,6 +104,23 @@ export interface CaseDesignParent {
   Total_Destination_Value__c: number | null;
 }
 
+/**
+ * A named TAB on a Case Design — one per meeting/stage (e.g. "Consolidation"
+ * 04/13, "Allocation Map" 04/15). Each tab maps to a Page_Number; positions,
+ * edges, sections, and annotations belong to whichever tab their
+ * Page_Number__c matches. Master-Detail to Case_Design__c (relationshipName
+ * `Tabs`).
+ */
+export interface CaseDesignTab {
+  Id: string;
+  Name: string;
+  Case_Design__c: string;
+  Label__c: string;
+  Tab_Date__c: string | null;
+  Page_Number__c: number;
+  Sort_Order__c: number | null;
+}
+
 export interface CaseDesignSection {
   Id: string;
   Name: string;
@@ -144,6 +161,8 @@ export interface CaseDesignPosition {
   Position_X__c: number | null;
   Position_Y__c: number | null;
   Replaces_Position__c: string | null;
+  /** Which tab (page) this position belongs to. Null = legacy → first tab. */
+  Page_Number__c: number | null;
 }
 
 export interface CaseDesignEdge {
@@ -162,6 +181,8 @@ export interface CaseDesignEdge {
   Timing_Note__c: string | null;
   Stage__c: string | null;
   Status__c: EdgeStatus;
+  /** Which tab (page) this edge belongs to. Null = legacy → first tab. */
+  Page_Number__c: number | null;
 }
 
 export interface CaseDesignAnnotation {
@@ -179,6 +200,7 @@ export interface CaseDesignAnnotation {
 
 export interface CaseDesignBundle {
   parent: CaseDesignParent;
+  tabs: CaseDesignTab[];
   sections: CaseDesignSection[];
   positions: CaseDesignPosition[];
   edges: CaseDesignEdge[];

@@ -11,6 +11,7 @@ import type {
   AccountType,
   CaseDesignBundle,
   CaseDesignParent,
+  CaseDesignTab,
   CaseDesignSection,
   CaseDesignPosition,
   CaseDesignEdge,
@@ -43,6 +44,11 @@ const PARENT_FIELDS = [
   "Total_Source_Value__c", "Total_Destination_Value__c",
 ].join(", ");
 
+const TAB_FIELDS = [
+  "Id", "Name", "Case_Design__c", "Label__c", "Tab_Date__c",
+  "Page_Number__c", "Sort_Order__c",
+].join(", ");
+
 const SECTION_FIELDS = [
   "Id", "Name", "Case_Design__c", "Label__c", "Section_Type__c",
   "Page_Number__c", "Sort_Order__c", "Style__c",
@@ -56,6 +62,7 @@ const POSITION_FIELDS = [
   "Amount__c", "Account_Value__c", "Surrender_Value__c", "Cash_Value__c", "Death_Benefit__c",
   "Annual_Fee_Pct__c", "Annual_Fee_Display__c", "Fee_Is_Approximate__c",
   "Contribution_Note__c", "Position_X__c", "Position_Y__c", "Replaces_Position__c",
+  "Page_Number__c",
 ].join(", ");
 
 const EDGE_FIELDS = [
@@ -63,6 +70,7 @@ const EDGE_FIELDS = [
   "Method__c", "Method_Label_Override__c", "Partial_Amount__c",
   "Gross_Amount__c", "Federal_Tax__c", "State_Tax__c",
   "Tax_Payment_Source__c", "Timing_Note__c", "Stage__c", "Status__c",
+  "Page_Number__c",
 ].join(", ");
 
 const ANNOTATION_FIELDS = [
@@ -75,9 +83,14 @@ const ANNOTATION_FIELDS = [
 
 export async function loadCaseDesign(id: string): Promise<CaseDesignBundle | null> {
   const conn = await getSFConnection();
-  const [parentRows, sections, positions, edges, annotations] = await Promise.all([
+  const [parentRows, tabs, sections, positions, edges, annotations] = await Promise.all([
     conn.query<CaseDesignParent>(
       `SELECT ${PARENT_FIELDS} FROM Case_Design__c WHERE Id = '${safeId(id)}' LIMIT 1`
+    ),
+    conn.query<CaseDesignTab>(
+      `SELECT ${TAB_FIELDS} FROM Case_Design_Tab__c
+       WHERE Case_Design__c = '${safeId(id)}'
+       ORDER BY Sort_Order__c NULLS LAST, Page_Number__c`
     ),
     conn.query<CaseDesignSection>(
       `SELECT ${SECTION_FIELDS} FROM Case_Design_Section__c
@@ -113,6 +126,7 @@ export async function loadCaseDesign(id: string): Promise<CaseDesignBundle | nul
   };
   return {
     parent,
+    tabs: tabs.records,
     sections: sections.records,
     positions: positions.records,
     edges: edges.records,
@@ -131,6 +145,7 @@ export async function updateCaseDesignParent(
 // ---------- child CRUD (generic) ----------
 
 type ChildObject =
+  | { type: "Tab"; sf: "Case_Design_Tab__c" }
   | { type: "Section"; sf: "Case_Design_Section__c" }
   | { type: "Position"; sf: "Case_Design_Position__c" }
   | { type: "Edge"; sf: "Case_Design_Edge__c" }
@@ -156,6 +171,14 @@ async function deleteChild(obj: ChildObject["sf"], id: string): Promise<void> {
 }
 
 // ---------- typed child wrappers ----------
+
+export const tabs = {
+  create: (caseDesignId: string, data: Partial<CaseDesignTab>) =>
+    createChild("Case_Design_Tab__c", { Case_Design__c: caseDesignId, ...data }),
+  update: (id: string, patch: Partial<CaseDesignTab>) =>
+    updateChild("Case_Design_Tab__c", id, patch),
+  remove: (id: string) => deleteChild("Case_Design_Tab__c", id),
+};
 
 export const sections = {
   create: (caseDesignId: string, data: Partial<CaseDesignSection>) =>
