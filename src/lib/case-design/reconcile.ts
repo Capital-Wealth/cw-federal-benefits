@@ -363,9 +363,12 @@ export async function aggregateSources(caseDesignId: string): Promise<Aggregated
     );
     if (meetings.records.length > 0) {
       const meetingIn = meetings.records.map((r) => `'${r.Id}'`).join(",");
+      // Notes__c is a rich-text (long text) field — SOQL cannot filter on it
+      // ("field 'Notes__c' can not be filtered in a query call"), so we fetch
+      // all notes for the household's meetings and drop empty ones in JS below.
       const noteRows = await conn.query<{ Id: string; Type__c: string | null; Notes__c: string | null }>(
         `SELECT Id, Type__c, Notes__c FROM Meeting_Notes__c
-         WHERE Meeting__c IN (${meetingIn}) AND Notes__c != null`,
+         WHERE Meeting__c IN (${meetingIn})`,
       );
       for (const n of noteRows.records) {
         const text = stripHtml(n.Notes__c ?? "");
