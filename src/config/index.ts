@@ -101,19 +101,6 @@ export const PARSE_CONFIG = {
   confidenceThreshold: parseInt(optional("AI_CONFIDENCE_THRESHOLD", "70")),
 };
 
-/**
- * Winchester parse service — the local `claude` CLI backend (Opus, Max-plan
- * OAuth, no Anthropic API key) reached over a Cloudflare tunnel. Does the
- * two-pass-verify extraction. See winchester-parse/README.md.
- */
-export const PARSE_SERVICE = {
-  url: optional("PARSE_SERVICE_URL", "https://parse.mysupertool.app"),
-  get secret(): string {
-    return required("PARSE_SERVICE_SECRET");
-  },
-  timeoutMs: parseInt(optional("PARSE_SERVICE_TIMEOUT_MS", "300000")),
-};
-
 // ============================================================
 // Upload
 // ============================================================

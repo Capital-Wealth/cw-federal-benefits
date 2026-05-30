@@ -594,7 +594,7 @@ function PlanColumn(props: {
   if (!dateOfBirth) missing.push("Date of Birth");
   if (!state.Current_Annual_Salary__c) missing.push("Current Annual Salary");
   if (!state.Retirement_System__c) missing.push("Retirement System (FERS/CSRS)");
-  // Mailing address has no calc impact (cover-page cosmetic only) — never gate on it.
+  if (!address) missing.push("Mailing Address (on Contact)");
   // Planned Retirement Date is intentionally omitted — buildReportInput
   // auto-defaults it to DOB + 57 (FERS MRA / LEO mandatory retirement age)
   // so the advisor can override on the right panel if needed.

@@ -1,13 +1,9 @@
 /**
  * AI Document Parser for Federal Benefits Intake
  *
- * Sends each document to the Winchester parse service (winchester-parse/) over
- * a Cloudflare tunnel. That service drives the local `claude` CLI (Opus,
- * Max-plan OAuth — no Anthropic API key, no per-token cost) and runs TWO blind
- * passes, returning only fields both agree on (`accepted`); disagreements come
- * back `flagged`. We replaced the in-process Anthropic SDK call because every
- * SDK call was throwing and the error was being swallowed — intakes came back
- * "AI Parsed" at confidence 0 with nothing populated (Gary Abeyta, FBI-0046).
+ * Calls the Anthropic SDK directly (claude-opus-4-7) with vision so it runs
+ * unchanged on Vercel serverless. PDFs go in as `document` content blocks;
+ * images as `image` blocks. Requires ANTHROPIC_API_KEY in env.
  *
  * Critical for FERS high-3 accuracy: the LES prompt is structured to extract
  * EVERY retirement-creditable earnings line item, not just base pay. For
@@ -16,8 +12,12 @@
  * computed annuity ~25% too low. See feedback_les_availability_pay_high3.md.
  */
 
+import Anthropic from "@anthropic-ai/sdk";
 import type { DocumentType, ParseResult, ParsedField } from "@/types";
-import { PARSE_CONFIG, PARSE_SERVICE } from "@/config";
+import { PARSE_CONFIG } from "@/config";
+
+const anthropic = new Anthropic();
+const PARSER_MODEL = "claude-opus-4-7";
 
 // ============================================================
 // Document-Type-Specific Extraction Prompts
@@ -203,16 +203,28 @@ CRITICAL if this is an LES: high-3 includes more than base pay. Sum ALL retireme
 Only return fields you can read directly. Omit (use null) anything unclear.`,
 };
 
+const PARSE_SUFFIX = `
+
+IMPORTANT:
+- Return ONLY valid JSON, no markdown fencing, no explanation.
+- For currency values, return numbers only (no $ signs or commas).
+- For dates, use YYYY-MM-DD format.
+- For percentages stored as decimals in the document, convert to the expected format.
+- If a field is partially visible or unclear, include it but note low confidence.
+
+After the JSON object, on a new line, output a confidence assessment as:
+CONFIDENCE: <number 0-100>
+WARNINGS: <comma-separated list of any issues, or "none">`;
+
 // ============================================================
 // Core Parsing Function
 // ============================================================
 
 /**
- * Parse a document via the Winchester parse service (two blind passes,
- * verified). Returns a ParseResult whose `fields` are the agreed values
- * (confidence 100) and whose `warnings` carry every flagged disagreement, so
- * the advisor sees exactly what the two passes could not confirm — and a total
- * failure can never again masquerade as a clean empty parse.
+ * Parse a document using the Claude CLI (routes through Max plan OAuth).
+ *
+ * Saves the file to a temp path, passes it to `claude -p` which uses
+ * Claude's vision to read the document and extract fields.
  */
 export async function parseDocument(
   fileBuffer: Buffer,
@@ -220,9 +232,11 @@ export async function parseDocument(
   documentType: DocumentType,
   fileName: string
 ): Promise<ParseResult> {
-  const supportedImageTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+  const supportedImageTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const;
+  type SupportedImageType = typeof supportedImageTypes[number];
+
   const isPdf = fileType === "application/pdf";
-  const isImage = supportedImageTypes.includes(fileType);
+  const isImage = (supportedImageTypes as readonly string[]).includes(fileType);
 
   if (!isPdf && !isImage) {
     return {
@@ -234,59 +248,52 @@ export async function parseDocument(
     };
   }
 
-  try {
-    const res = await fetch(`${PARSE_SERVICE.url}/parse`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-parse-secret": PARSE_SERVICE.secret,
-      },
-      body: JSON.stringify({
-        mime: fileType,
-        docBase64: fileBuffer.toString("base64"),
-        prompt: EXTRACTION_PROMPTS[documentType],
-      }),
-      signal: AbortSignal.timeout(PARSE_SERVICE.timeoutMs),
-    });
+  const prompt = EXTRACTION_PROMPTS[documentType] + PARSE_SUFFIX;
+  const docBlock = isPdf
+    ? {
+        type: "document" as const,
+        source: {
+          type: "base64" as const,
+          media_type: "application/pdf" as const,
+          data: fileBuffer.toString("base64"),
+        },
+      }
+    : {
+        type: "image" as const,
+        source: {
+          type: "base64" as const,
+          media_type: fileType as SupportedImageType,
+          data: fileBuffer.toString("base64"),
+        },
+      };
 
-    if (!res.ok) {
-      const detail = await res.text().catch(() => "");
+  try {
+    const response = await anthropic.messages.create(
+      {
+        model: PARSER_MODEL,
+        max_tokens: 8192,
+        messages: [{
+          role: "user",
+          content: [
+            docBlock,
+            { type: "text", text: `Analyze this ${documentType} document and extract the requested fields.\n\n${prompt}` },
+          ],
+        }],
+      },
+      { timeout: PARSE_CONFIG.timeoutMs },
+    );
+
+    const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === "text");
+    if (!textBlock) {
       return {
         documentId: "",
         documentType,
         fields: [],
         overallConfidence: 0,
-        warnings: [`Parse service ${res.status} for ${fileName}: ${detail.slice(0, 200)}`],
+        warnings: [`No text response from Claude for ${fileName}`],
       };
     }
-
-    const data = (await res.json()) as {
-      accepted?: Record<string, unknown>;
-      flagged?: { path: string; passA: unknown; passB: unknown }[];
-    };
-    const accepted = data.accepted ?? {};
-    const flagged = data.flagged ?? [];
-
-    // Agreed, non-null values become the fields the merge step writes to SF.
-    const fields: ParsedField[] = Object.entries(accepted)
-      .filter(([, v]) => v !== null && v !== undefined)
-      .map(([fieldName, value]) => ({
-        fieldName,
-        value: value as string | number | boolean,
-        confidence: 100,
-        source: fileName,
-      }));
-
-    // Every disagreement is surfaced for advisor review, never silently dropped.
-    const warnings = flagged.map(
-      (f) =>
-        `${f.path}: passes disagree (A=${JSON.stringify(f.passA)}, B=${JSON.stringify(f.passB)}) — verify with client`
-    );
-
-    const total = fields.length + flagged.length;
-    const overallConfidence = total === 0 ? 0 : Math.round((fields.length / total) * 100);
-
-    return { documentId: "", documentType, fields, overallConfidence, warnings };
+    return parseAIResponse(textBlock.text, documentType, fileName);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return {
@@ -294,9 +301,93 @@ export async function parseDocument(
       documentType,
       fields: [],
       overallConfidence: 0,
-      warnings: [`Parse service call failed for ${fileName}: ${msg}`],
+      warnings: [`Anthropic SDK parsing failed for ${fileName}: ${msg}`],
     };
   }
+}
+
+// ============================================================
+// Response Parser
+// ============================================================
+
+/**
+ * Parse the AI's raw text response into structured ParseResult.
+ */
+function parseAIResponse(
+  rawText: string,
+  documentType: DocumentType,
+  fileName: string
+): ParseResult {
+  const warnings: string[] = [];
+  let overallConfidence = 0;
+
+  // Extract JSON — handle potential markdown fencing
+  let jsonStr = rawText;
+  const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    jsonStr = jsonMatch[0];
+  }
+
+  // Extract confidence line
+  const confidenceMatch = rawText.match(/CONFIDENCE:\s*(\d+)/);
+  if (confidenceMatch) {
+    overallConfidence = parseInt(confidenceMatch[1]);
+  }
+
+  // Extract warnings line
+  const warningsMatch = rawText.match(/WARNINGS:\s*(.+)/);
+  if (warningsMatch && warningsMatch[1].toLowerCase() !== "none") {
+    warnings.push(...warningsMatch[1].split(",").map((w) => w.trim()));
+  }
+
+  // Parse the JSON
+  let parsedData: Record<string, unknown>;
+  try {
+    parsedData = JSON.parse(jsonStr);
+  } catch {
+    return {
+      documentId: "",
+      documentType,
+      fields: [],
+      overallConfidence: 0,
+      warnings: [`Failed to parse AI response as JSON from ${fileName}`],
+    };
+  }
+
+  // Convert to ParsedField array
+  const fields: ParsedField[] = [];
+
+  function flattenFields(
+    obj: Record<string, unknown>,
+    prefix: string = ""
+  ): void {
+    for (const [key, value] of Object.entries(obj)) {
+      if (value === null || value === undefined) continue;
+
+      const fieldName = prefix ? `${prefix}.${key}` : key;
+
+      if (typeof value === "object" && !Array.isArray(value)) {
+        flattenFields(value as Record<string, unknown>, key);
+      } else {
+        fields.push({
+          fieldName,
+          value: value as string | number | boolean,
+          confidence: overallConfidence,
+          source: fileName,
+        });
+      }
+    }
+  }
+
+  flattenFields(parsedData);
+
+  return {
+    documentId: "",
+    documentType,
+    fields,
+    overallConfidence,
+    warnings,
+  };
 }
 
 // ============================================================
@@ -357,16 +448,7 @@ export function mergeParseResults(
         )
       : 0;
 
-  // Surface per-document parse warnings/errors (e.g. "… parsing failed: …")
-  // FIRST. A doc whose extraction threw returns zero fields + a warning; if we
-  // drop that warning the record looks "AI Parsed" at confidence 0 with no
-  // explanation — which is exactly how Gary Abeyta's intake came back empty.
-  // Propagating it means a silent total failure is now visible on the record.
-  const docWarnings = results.flatMap((r) =>
-    (r.warnings ?? []).map((w) => `[${r.documentType}] ${w}`)
-  );
-
-  const fieldsNeedingReview: string[] = [...docWarnings, ...conflicts];
+  const fieldsNeedingReview: string[] = [...conflicts];
   for (const [fieldName, { confidence }] of fieldMap) {
     if (confidence < PARSE_CONFIG.confidenceThreshold) {
       fieldsNeedingReview.push(`${fieldName} (low confidence: ${confidence}%)`);
