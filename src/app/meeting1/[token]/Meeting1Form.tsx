@@ -39,8 +39,9 @@ function isPrefilled(api: string, v: FieldValue): boolean {
 }
 
 // Sections kept visible by default in Introductory-Meeting mode (Lead-side, 30-min discovery).
-// Everything else collapses behind "Show full intake (Meeting 1)". Per 5/21 spec.
-const INTRO_KEY_SECTIONS = new Set(["opener", "background"]);
+// Opener + background = the qualifying anchors; goals = the close. Everything else
+// (pensions, SS amounts, fees, estate) collapses behind "Show full intake".
+const INTRO_KEY_SECTIONS = new Set(["opener", "background", "goals"]);
 
 export default function Meeting1Form({ token }: { token: string }) {
   const [loading, setLoading] = useState(true);
@@ -57,6 +58,16 @@ export default function Meeting1Form({ token }: { token: string }) {
   const [isIntro, setIsIntro] = useState(false);
   const [showFullIntake, setShowFullIntake] = useState(false);
   const toastTimer = useRef<number | null>(null);
+
+  // ---- Federal Vault invite ----
+  const [vaultBusy, setVaultBusy] = useState(false);
+  const [vaultError, setVaultError] = useState<string | null>(null);
+  const [vaultResult, setVaultResult] = useState<{
+    portalUrl: string;
+    name: string | null;
+    reused: boolean;
+    message: string;
+  } | null>(null);
 
   // ---- load ----
   useEffect(() => {
@@ -184,6 +195,28 @@ export default function Meeting1Form({ token }: { token: string }) {
     }
   };
 
+  const sendVaultInvite = async () => {
+    setVaultBusy(true);
+    setVaultError(null);
+    try {
+      const res = await fetch("/api/vault/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setVaultError(data.error || "Could not send the Vault invite.");
+        return;
+      }
+      setVaultResult(data);
+    } catch (e) {
+      setVaultError(e instanceof Error ? e.message : "Network error");
+    } finally {
+      setVaultBusy(false);
+    }
+  };
+
   // ---- render ----
   if (loading) {
     return (
@@ -237,6 +270,29 @@ export default function Meeting1Form({ token }: { token: string }) {
         </p>
       )}
 
+      {/* Conversation notes — prominent in discovery mode. The Zoom transcript
+          captures the full call; this is for the rep's key takeaways. */}
+      {isIntro && (
+        <section className="mb-6 rounded-xl border-2 bg-white p-5 shadow-sm" style={{ borderColor: GOLD }}>
+          <h2 className="text-lg font-semibold" style={{ color: NAVY }}>
+            Conversation Notes
+          </h2>
+          <p className="mt-1 text-[13px] leading-relaxed text-zinc-600">
+            Capture the key takeaways, concerns in their own words, and what they
+            committed to. The full call is saved to Salesforce automatically from
+            the Zoom transcript — you don&apos;t need to transcribe.
+          </p>
+          <textarea
+            value={(record["Additional_Notes__c"] as string) ?? ""}
+            onChange={(e) => setField("Additional_Notes__c", e.target.value)}
+            rows={8}
+            placeholder="What did they say? What's the real pain behind the pain? What did they commit to?"
+            className="mt-3 w-full rounded-md border border-zinc-300 bg-white px-3 py-2.5 text-base"
+            style={{ color: NAVY, colorScheme: "light" }}
+          />
+        </section>
+      )}
+
       {SECTIONS.map((section, idx) => {
         const isKey = INTRO_KEY_SECTIONS.has(section.id);
         if (isIntro && !isKey && !showFullIntake) return null;
@@ -267,14 +323,18 @@ export default function Meeting1Form({ token }: { token: string }) {
             </div>
           )}
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {section.fields.map((f) => (
-              <Field
-                key={f.api}
-                def={f}
-                value={record[f.api] ?? null}
-                onChange={(v) => setField(f.api, v)}
-              />
-            ))}
+            {section.fields
+              // Additional_Notes__c is surfaced as the prominent Conversation
+              // Notes block above in discovery mode — don't render it twice.
+              .filter((f) => !(isIntro && f.api === "Additional_Notes__c"))
+              .map((f) => (
+                <Field
+                  key={f.api}
+                  def={f}
+                  value={record[f.api] ?? null}
+                  onChange={(v) => setField(f.api, v)}
+                />
+              ))}
           </div>
         </section>
         );
@@ -385,6 +445,63 @@ export default function Meeting1Form({ token }: { token: string }) {
         </div>
       )}
 
+      {/* Federal Vault invite */}
+      <div
+        className="mb-6 rounded-lg border-l-4 bg-white p-4 shadow-sm"
+        style={{ borderLeftColor: GOLD }}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold" style={{ color: NAVY }}>
+              Federal Vault link
+            </h3>
+            <p className="mt-0.5 text-xs text-zinc-600">
+              Create a secure upload link (LES, SF-50, TSP &amp; more) for this
+              prospect. The Vault record is created in Salesforce — copy the link
+              and share it however you like.
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={vaultBusy}
+            onClick={sendVaultInvite}
+            className="rounded-md px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+            style={{ backgroundColor: GOLD, color: NAVY }}
+          >
+            {vaultBusy ? "Creating…" : "Create Vault Link"}
+          </button>
+        </div>
+
+        {vaultError && (
+          <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-2.5 text-xs text-red-700">
+            {vaultError}
+          </div>
+        )}
+
+        {vaultResult && (
+          <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 p-2.5 text-xs text-emerald-800">
+            <div className="font-medium">{vaultResult.message}</div>
+            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+              <input
+                readOnly
+                value={vaultResult.portalUrl}
+                onFocus={(e) => e.currentTarget.select()}
+                className="min-w-0 flex-1 rounded border border-emerald-300 bg-white px-2 py-1 font-mono text-[11px]"
+                style={{ color: NAVY, colorScheme: "light" }}
+              />
+              <button
+                type="button"
+                onClick={() => navigator.clipboard?.writeText(vaultResult.portalUrl)}
+                className="rounded border border-emerald-300 bg-white px-2.5 py-1 font-medium"
+                style={{ color: NAVY }}
+              >
+                Copy link
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Sticky action bar */}
       <div
         className="sticky bottom-0 -mx-4 border-t-2 px-4 py-3 backdrop-blur"
@@ -441,38 +558,50 @@ export default function Meeting1Form({ token }: { token: string }) {
  * (the "What goes at the top..." section, per Ann + Mike 5/21 sales meeting).
  */
 function IntroScriptPanel() {
-  const checklist: { lead: string; rest: string }[] = [
+  // The Straight Line, federal discovery edition. Six steps, in order — every
+  // beat either raises a certainty or moves toward booking the next meeting.
+  const line: { n: string; king: string; title: string; say?: string; note: string }[] = [
     {
-      lead: "This is discovery, not pitching.",
-      rest: " 30 minutes, 100% client-driven, zero answers given today.",
+      n: "1",
+      king: "Voss",
+      title: "Open — accusation audit",
+      say: "“You've probably been sent to three people who all told you to check OPM's website. We're not doing that today. What would make the next 30 minutes worth your time?”",
+      note: "First 4 seconds: sharp, warm, certain. Say it, then go quiet and let them answer.",
     },
     {
-      lead: "Ask the three non-negotiables first:",
-      rest: " (1) When do you want to retire? (2) Service Computation Date? (3) Survivor benefit — yes/no + amount, and has the spouse-conversation happened?",
+      n: "2",
+      king: "Belfort",
+      title: "The three non-negotiables — ask FIRST",
+      say: "(1) When do you want to retire?  (2) Do you know your Service Computation Date (SCD)?  (3) Survivor benefit — yes/no, what amount, and has the spouse conversation happened?",
+      note: "These three anchor everything. Get them on the record before anything else.",
     },
     {
-      lead: "Label, mirror, then shut up.",
-      rest: " Default to “it sounds like…” / “it seems like…” — never “why.”",
+      n: "3",
+      king: "Voss",
+      title: "Label, mirror, then shut up",
+      say: "“It sounds like…”  /  “It seems like…”  — mirror the last 1–3 words they stress.",
+      note: "Never ask “why.” Silence does the work — let them fill it.",
     },
     {
-      lead: "Name the villain out loud:",
-      rest: " HR was never intended to be a financial planning office; 2011 Sequestration gutted it; YOYO is the system you were handed, not a personal failing.",
+      n: "4",
+      king: "Miller",
+      title: "Name the villain",
+      say: "“In 2011, sequestration gutted agency HR — it was never a financial-planning office. You were handed a YOYO system: You're On Your Own. Not knowing this isn't on you; it's by design.”",
+      note: "Externalize the fight. They're the hero; the system is the villain; CW is the guide.",
     },
     {
-      lead: "Tease the FBC in 30 seconds.",
-      rest: " Do not explain it. Bridge content questions to Ann: “Good question — Ann’s going to cover that in depth. Let’s make sure you’re on her calendar.”",
+      n: "5",
+      king: "Belfort",
+      title: "Drop ONE insight — then tease, don't teach",
+      say: "“Most feds have no idea when they can retire — not when they want to, when the math actually allows.”  (or: GRB estimates run hundreds/mo off; <5% claim the $162.50/mo HSA contribution.)",
+      note: "The insight crosses the threshold. Don't explain it — bridge to Ann: “That's exactly what your Money Map answers.”",
     },
     {
-      lead: "Spouse check is mandatory.",
-      rest: " Survivor benefit cannot be decided one-sided. If spouse isn’t here, the Meeting 1 must include them.",
-    },
-    {
-      lead: "Close on two locks:",
-      rest: " (1) Vault link sent today for GRB + FEHB upload. (2) 1-hour Meeting 1 on the calendar before they hang up.",
-    },
-    {
-      lead: "Federal vocabulary only.",
-      rest: " GRB, FBC, FEHB, FEGLI, SCD, MRA, TSP, FERS Supplement. Private-sector jargon loses the room.",
+      n: "6",
+      king: "Belfort",
+      title: "Close — directive, two locks",
+      say: "“Here's what happens next: Ann builds your Retirement Money Map from what you shared — verifiable numbers, the exact day the math says you can retire. It's complimentary.”  Then: “If we put together a plan that hits your concerns and goals — would you be opposed to seeing it?”",
+      note: "Lock 1: Vault link sent today (button at the bottom). Lock 2: next meeting booked before they hang up — spouse on it.",
     },
   ];
   return (
@@ -480,39 +609,48 @@ function IntroScriptPanel() {
       className="mb-6 mt-5 rounded-xl border-2 p-5 shadow-sm"
       style={{ borderColor: GOLD, backgroundColor: NAVY, color: "white" }}
     >
-      <div className="mb-3 flex items-baseline gap-3">
-        <span
-          className="font-mono text-xs font-bold uppercase tracking-widest"
-          style={{ color: GOLD }}
-        >
-          Pre-flight
+      <div className="mb-2 flex items-baseline gap-3">
+        <span className="font-mono text-xs font-bold uppercase tracking-widest" style={{ color: GOLD }}>
+          Straight Line
         </span>
         <h2 className="text-lg font-semibold text-white">
-          30-Min Introductory Meeting — Federal (rep-facing)
+          30-Min Federal Discovery — rep script
         </h2>
       </div>
       <p className="mb-4 text-[14px] leading-relaxed text-white/85">
-        Read this before you start the form. The Intro Meeting is discovery, not
-        pitching — every answer you give today is an answer Ann doesn&apos;t get
-        to give in Meeting 1.
+        Discovery, not pitching. Stay on the line — every beat moves toward
+        booking the next meeting. Give no answers today; every answer you give is
+        one Ann doesn&apos;t get to give. No calculators — take them just far
+        enough to see they can&apos;t do this alone.
       </p>
-      <ul className="space-y-2 text-[14px] leading-relaxed">
-        {checklist.map((item, i) => (
-          <li key={i} className="flex gap-3">
+      <ol className="space-y-3 text-[14px] leading-relaxed">
+        {line.map((step) => (
+          <li key={step.n} className="flex gap-3">
             <span
-              className="mt-1.5 inline-block h-1.5 w-1.5 flex-shrink-0 rounded-full"
-              style={{ backgroundColor: GOLD }}
+              className="mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full font-mono text-xs font-bold"
+              style={{ backgroundColor: GOLD, color: NAVY }}
               aria-hidden="true"
-            />
-            <span className="text-white/95">
-              <span className="font-semibold" style={{ color: GOLD }}>
-                {item.lead}
-              </span>
-              {item.rest}
+            >
+              {step.n}
             </span>
+            <div>
+              <div className="font-semibold" style={{ color: GOLD }}>
+                {step.title}
+                <span className="ml-2 align-middle font-normal text-[11px] uppercase tracking-wide text-white/50">
+                  {step.king}
+                </span>
+              </div>
+              {step.say && <p className="mt-0.5 text-white/95">{step.say}</p>}
+              <p className="mt-0.5 text-[13px] text-white/65">{step.note}</p>
+            </div>
           </li>
         ))}
-      </ul>
+      </ol>
+      <p className="mt-4 border-t border-white/15 pt-3 text-[12px] text-white/55">
+        Federal vocabulary only: GRB, FBC, FEHB, FEGLI, SCD, MRA, TSP, FERS
+        Supplement. The full call is captured to Salesforce from the Zoom
+        transcript — your notes below are the key takeaways and commitments.
+      </p>
     </section>
   );
 }

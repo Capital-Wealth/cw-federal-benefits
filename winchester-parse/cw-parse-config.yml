@@ -1,0 +1,7 @@
+tunnel: 86ab91e3-bdb8-4dc5-8542-8615649b8658
+credentials-file: /Users/thorsnode/.cloudflared/86ab91e3-bdb8-4dc5-8542-8615649b8658.json
+
+ingress:
+  - hostname: parse.mysupertool.app
+    service: http://localhost:18795
+  - service: http_status:404
