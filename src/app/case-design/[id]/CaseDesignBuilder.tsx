@@ -10,16 +10,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AccountType,
   CaseDesignBundle,
+  CaseDesignTab,
 } from "@/lib/case-design/types";
 import type { MeetingIntakeAsset } from "@/lib/case-design/sf-client";
-import { useCaseDesign } from "./useCaseDesign";
+import { useCaseDesign, firstPageNumber } from "./useCaseDesign";
 import Diagram from "./Diagram";
 import BuilderHeader from "./components/BuilderHeader";
+import TabBar from "./components/TabBar";
 import AccountColumn from "./components/AccountColumn";
 import EditPanel from "./components/EditPanel";
 import AdvancedDrawer, { AdvancedDrawerButton } from "./components/AdvancedDrawer";
 import Celebrate from "./components/Celebrate";
 import HouseholdSummaryStrip from "./components/HouseholdSummaryStrip";
+import AuditChecklistPanel from "./components/AuditChecklistPanel";
 
 type PlanType =
   | "Rollover"
@@ -80,8 +83,13 @@ export default function CaseDesignBuilder({
     bundle,
     saving,
     lastSavedAt,
+    activePage,
+    setActivePage,
     refetch,
     updateParent,
+    addTab,
+    updateTab,
+    deleteTab,
     addPosition,
     updatePosition,
     deletePosition,
@@ -95,13 +103,20 @@ export default function CaseDesignBuilder({
   } = hook;
   const { parent } = bundle;
   const locked = parent.Status__c === "Locked";
+  // Tab editing (add/rename/date/delete/reorder) is gated to Draft, mirroring
+  // the builder's status-aware editing. Canvas edits stay gated on `locked`.
+  const tabsReadOnly = parent.Status__c !== "Draft";
 
   const [selectedPositionId, setSelectedPositionId] = useState<string | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [householdAssets, setHouseholdAssets] = useState<MeetingIntakeAsset[]>([]);
   const [toast, setToast] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
   const [confirmingAction, setConfirmingAction] = useState<
-    null | { kind: "finalize" | "confirm"; message: string; onYes: () => void }
+    null | {
+      kind: "finalize" | "confirm" | "delete-tab" | "reset";
+      message: string;
+      onYes: () => void;
+    }
   >(null);
   const [celebration, setCelebration] = useState<null | { childOppCount: number }>(null);
   const [autoFilling, setAutoFilling] = useState(false);
@@ -230,6 +245,68 @@ export default function CaseDesignBuilder({
     })();
   }, [parent.Id, parent.Status__c, locked, bundle.positions.length, bundle.edges.length, refetch]);
 
+  // --- Reset & Regenerate (Q8) — overflow menu action ---
+  //
+  // Wipes the current positions/edges + audit stamp server-side, then re-runs
+  // generate-from-vault on the now-clean Draft. Gated behind a confirm dialog.
+  const handleResetRegenerate = useCallback(() => {
+    setConfirmingAction({
+      kind: "reset",
+      message:
+        "This will delete all current positions and arrows, then rebuild the Money Map from Vault data. Any manual edits will be lost.",
+      onYes: () => {
+        setConfirmingAction(null);
+        setVaultGeneratedSummary(null);
+        setAutoFilling(true);
+        (async () => {
+          try {
+            const res = await fetch(
+              `/api/case-design/${parent.Id}/generate-from-vault?reset=1`,
+              { method: "POST" }
+            );
+            const data = (await res.json().catch(() => ({}))) as {
+              status?: string;
+              sourcesCreated?: number;
+              destinationsCreated?: number;
+              edgesCreated?: number;
+              keepCount?: number;
+              lowConfidenceCount?: number;
+              fieldsNeedingReview?: string;
+              error?: string;
+              reasonIfSkipped?: string;
+            };
+            await refetch();
+            if (data.status === "ok" && (data.sourcesCreated ?? 0) > 0) {
+              setVaultGeneratedSummary({
+                sourcesCreated: data.sourcesCreated ?? 0,
+                destinationsCreated: data.destinationsCreated ?? 0,
+                edgesCreated: data.edgesCreated ?? 0,
+                keepCount: data.keepCount ?? 0,
+                lowConfidenceCount: data.lowConfidenceCount ?? 0,
+                fieldsNeedingReview: data.fieldsNeedingReview ?? "",
+              });
+              setToast({
+                kind: "ok",
+                msg: `Regenerated ${data.sourcesCreated} sources, ${data.destinationsCreated} destinations, ${data.edgesCreated} arrows from Vault.`,
+              });
+            } else if (data.status === "skipped-no-vault") {
+              setToast({
+                kind: "ok",
+                msg: "Reset complete — no Vault data to regenerate from. Build manually or load from Meeting 1.",
+              });
+            } else if (!res.ok) {
+              setToast({ kind: "err", msg: data.error || data.reasonIfSkipped || "Reset failed" });
+            }
+          } catch (e) {
+            setToast({ kind: "err", msg: e instanceof Error ? e.message : "Reset failed" });
+          } finally {
+            setAutoFilling(false);
+          }
+        })();
+      },
+    });
+  }, [parent.Id, refetch]);
+
   // --- Auto-fill from Salesforce on first open ---
   //
   // Fires exactly once per browser session when a Draft Case Design loads with
@@ -339,8 +416,50 @@ export default function CaseDesignBuilder({
 
   const householdLabel = useMemo(() => deriveHouseholdLabel(parent), [parent]);
 
-  const sources = bundle.positions.filter((p) => p.Role__c === "Source");
-  const destinations = bundle.positions.filter(
+  // --- Page (tab) filtering -------------------------------------------------
+  // Filter the entire diagram to the active tab's page ONCE, here, then pass
+  // the already-filtered bundle to every child (Diagram, AccountColumn,
+  // HouseholdSummaryStrip, EditPanel). Legacy records with a null Page_Number
+  // resolve to the first tab so single-page Case Designs are untouched.
+  const fallbackPage = useMemo(() => firstPageNumber(bundle.tabs), [bundle.tabs]);
+  const onPage = useCallback(
+    (pageNumber: number | null) => (pageNumber ?? fallbackPage) === activePage,
+    [fallbackPage, activePage]
+  );
+
+  const pageBundle = useMemo<CaseDesignBundle>(() => {
+    const positions = bundle.positions.filter((p) => onPage(p.Page_Number__c));
+    const positionIds = new Set(positions.map((p) => p.Id));
+    return {
+      ...bundle,
+      positions,
+      // An edge belongs to the page if its own Page_Number matches; legacy
+      // edges (null) fall back to whichever page both endpoints live on.
+      edges: bundle.edges.filter(
+        (e) =>
+          onPage(e.Page_Number__c) &&
+          positionIds.has(e.From_Position__c) &&
+          positionIds.has(e.To_Position__c)
+      ),
+      sections: bundle.sections.filter((s) => (s.Page_Number__c || 1) === activePage),
+      annotations: bundle.annotations.filter(
+        (a) => (a.Page_Number__c || 1) === activePage
+      ),
+    };
+  }, [bundle, onPage, activePage]);
+
+  // Per-page record counts (positions) for the tab-strip badges.
+  const pageCounts = useMemo(() => {
+    const counts: Record<number, number> = {};
+    for (const p of bundle.positions) {
+      const pg = p.Page_Number__c ?? fallbackPage;
+      counts[pg] = (counts[pg] ?? 0) + 1;
+    }
+    return counts;
+  }, [bundle.positions, fallbackPage]);
+
+  const sources = pageBundle.positions.filter((p) => p.Role__c === "Source");
+  const destinations = pageBundle.positions.filter(
     (p) => p.Role__c === "Destination"
   );
   const childOppCount = destinations.length;
@@ -414,6 +533,101 @@ export default function CaseDesignBuilder({
       void updateParent({ Plan_Type__c: Array.from(current).join(";") });
     },
     [locked, parent.Plan_Type__c, updateParent]
+  );
+
+  // --- Tab (meeting stage) CRUD -------------------------------------------
+
+  const handleAddTab = useCallback(async () => {
+    if (tabsReadOnly) return;
+    const maxPage = bundle.tabs.reduce(
+      (m, t) => Math.max(m, t.Page_Number__c ?? 1),
+      0
+    );
+    const maxSort = bundle.tabs.reduce(
+      (m, t) => Math.max(m, t.Sort_Order__c ?? t.Page_Number__c ?? 0),
+      0
+    );
+    const nextPage = maxPage + 1;
+    await addTab({
+      Label__c: "New Tab",
+      Page_Number__c: nextPage,
+      Sort_Order__c: maxSort + 1,
+    });
+    setActivePage(nextPage);
+  }, [tabsReadOnly, bundle.tabs, addTab, setActivePage]);
+
+  const handleRenameTab = useCallback(
+    (id: string, label: string) => {
+      if (tabsReadOnly) return;
+      void updateTab(id, { Label__c: label });
+    },
+    [tabsReadOnly, updateTab]
+  );
+
+  const handleSetTabDate = useCallback(
+    (id: string, date: string | null) => {
+      if (tabsReadOnly) return;
+      void updateTab(id, { Tab_Date__c: date });
+    },
+    [tabsReadOnly, updateTab]
+  );
+
+  const handleDeleteTab = useCallback(
+    (tab: CaseDesignTab) => {
+      if (tabsReadOnly) return;
+      if (bundle.tabs.length <= 1) {
+        setToast({ kind: "err", msg: "Cannot delete the last remaining tab." });
+        return;
+      }
+      const page = tab.Page_Number__c ?? 1;
+      const positionsOnPage = bundle.positions.filter(
+        (p) => (p.Page_Number__c ?? firstPageNumber(bundle.tabs)) === page
+      ).length;
+      // Simplest acceptable contract: block delete when the page still has
+      // positions and tell the advisor to clear it first. No silent cascade.
+      if (positionsOnPage > 0) {
+        setToast({
+          kind: "err",
+          msg: `"${tab.Label__c}" has ${positionsOnPage} account${
+            positionsOnPage === 1 ? "" : "s"
+          }. Move or delete them before removing this tab.`,
+        });
+        return;
+      }
+      setConfirmingAction({
+        kind: "delete-tab",
+        message: `Delete the "${tab.Label__c}" tab? This empty stage will be removed from the Money Map.`,
+        onYes: () => {
+          setConfirmingAction(null);
+          void deleteTab(tab.Id);
+        },
+      });
+    },
+    [tabsReadOnly, bundle.tabs, bundle.positions, deleteTab]
+  );
+
+  // Reorder by swapping Sort_Order with the adjacent tab (in display order).
+  const handleMoveTab = useCallback(
+    (id: string, direction: -1 | 1) => {
+      if (tabsReadOnly) return;
+      const ordered = [...bundle.tabs].sort((a, b) => {
+        const sa = a.Sort_Order__c ?? a.Page_Number__c ?? 0;
+        const sb = b.Sort_Order__c ?? b.Page_Number__c ?? 0;
+        return sa - sb;
+      });
+      const idx = ordered.findIndex((t) => t.Id === id);
+      const swapIdx = idx + direction;
+      if (idx < 0 || swapIdx < 0 || swapIdx >= ordered.length) return;
+      const a = ordered[idx];
+      const b = ordered[swapIdx];
+      // Normalize against null Sort_Order using the position in the list so the
+      // swap is always well-defined even on legacy tabs without Sort_Order.
+      const aSort = a.Sort_Order__c ?? idx + 1;
+      const bSort = b.Sort_Order__c ?? swapIdx + 1;
+      void updateTab(a.Id, { Sort_Order__c: bSort });
+      void updateTab(b.Id, { Sort_Order__c: aSort });
+    },
+    [tabsReadOnly, bundle.tabs, updateTab]
   );
 
   // --- Server actions -----------------------------------------------------
@@ -517,10 +731,30 @@ export default function CaseDesignBuilder({
         onDownloadPdf={downloadPdf}
         onToggleAdvanced={() => setAdvancedOpen((x) => !x)}
         advancedOpen={advancedOpen}
+        onResetRegenerate={handleResetRegenerate}
+        canResetRegenerate={
+          !locked &&
+          parent.Status__c === "Draft" &&
+          (sources.length > 0 || destinations.length > 0)
+        }
       />
 
-      {/* Household summary strip — instant context for "what are we working with" */}
-      <HouseholdSummaryStrip bundle={bundle} householdLabel={householdLabel} />
+      {/* Meeting-progression tabs — each tab is one meeting stage / page */}
+      <TabBar
+        tabs={bundle.tabs}
+        activePage={activePage}
+        pageCounts={pageCounts}
+        readOnly={tabsReadOnly}
+        onSelect={setActivePage}
+        onAdd={() => void handleAddTab()}
+        onRename={handleRenameTab}
+        onSetDate={handleSetTabDate}
+        onDelete={handleDeleteTab}
+        onMove={handleMoveTab}
+      />
+
+      {/* Household summary strip — totals reflect the ACTIVE tab only */}
+      <HouseholdSummaryStrip bundle={pageBundle} householdLabel={householdLabel} />
 
       {/* State banners */}
       {parent.Status__c === "Finalized" && !locked && (
@@ -578,7 +812,7 @@ export default function CaseDesignBuilder({
 
         <div className="col-span-6 min-h-0 relative">
           <Diagram
-            bundle={bundle}
+            bundle={pageBundle}
             householdLabel={householdLabel}
             selectedPositionId={selectedPositionId}
             intakeAssetCount={householdAssets.length}
@@ -645,17 +879,38 @@ export default function CaseDesignBuilder({
         />
       )}
 
+      {vaultGeneratedSummary && (
+        <AuditChecklistPanel
+          summary={vaultGeneratedSummary}
+          sources={sources}
+          destinations={destinations}
+          onJumpTo={(id) => setSelectedPositionId(id)}
+          onDismiss={() => setVaultGeneratedSummary(null)}
+        />
+      )}
+
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
 
       {confirmingAction && (
         <ConfirmDialog
+          kind={confirmingAction.kind}
           message={confirmingAction.message}
           confirmLabel={
-            confirmingAction.kind === "confirm" ? "Lock & create Opps" : "Finalize"
+            confirmingAction.kind === "confirm"
+              ? "Lock & create Opps"
+              : confirmingAction.kind === "delete-tab"
+                ? "Delete tab"
+                : confirmingAction.kind === "reset"
+                  ? "Reset & Regenerate"
+                  : "Finalize"
           }
           onCancel={() => setConfirmingAction(null)}
           onConfirm={confirmingAction.onYes}
-          danger={confirmingAction.kind === "confirm"}
+          danger={
+            confirmingAction.kind === "confirm" ||
+            confirmingAction.kind === "delete-tab" ||
+            confirmingAction.kind === "reset"
+          }
         />
       )}
 
@@ -769,18 +1024,28 @@ function Toast({
 /* ---------------- Confirmation dialog (replaces window.confirm) ---------------- */
 
 function ConfirmDialog({
+  kind,
   message,
   confirmLabel,
   onCancel,
   onConfirm,
   danger,
 }: {
+  kind: "finalize" | "confirm" | "delete-tab" | "reset";
   message: string;
   confirmLabel: string;
   onCancel: () => void;
   onConfirm: () => void;
   danger?: boolean;
 }) {
+  const title =
+    kind === "delete-tab"
+      ? "Delete this tab?"
+      : kind === "confirm"
+        ? "Lock this Case Design?"
+        : kind === "reset"
+          ? "Reset & Regenerate?"
+          : "Finalize?";
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
       <div
@@ -788,9 +1053,7 @@ function ConfirmDialog({
         role="alertdialog"
         aria-modal="true"
       >
-        <h3 className="text-base font-bold text-[#16253C] mb-2">
-          {danger ? "Lock this Case Design?" : "Finalize?"}
-        </h3>
+        <h3 className="text-base font-bold text-[#16253C] mb-2">{title}</h3>
         <p className="text-sm text-zinc-700 leading-relaxed mb-5">{message}</p>
         <div className="flex justify-end gap-2">
           <button

@@ -17,6 +17,7 @@ import {
 } from "./auto-layout";
 import type {
   CaseDesignBundle,
+  CaseDesignTab,
   CaseDesignPosition,
   CaseDesignSection,
   CaseDesignAnnotation,
@@ -34,6 +35,7 @@ const styles = StyleSheet.create({
   titleBlock: { alignItems: "flex-end" },
   household: { fontSize: 11, color: "#374151" },
   title: { fontSize: 12, fontWeight: 700, color: NAVY },
+  stageLabel: { fontSize: 10, fontWeight: 700, color: GOLD, marginTop: 2 },
   date: { fontSize: 10, color: "#6B7280", marginTop: 2 },
   sectionHeader: {
     textAlign: "center",
@@ -99,15 +101,33 @@ export interface CaseDesignPDFProps {
   householdLabel: string;
 }
 
+/** Lowest tab Page_Number, or 1 when there are no tabs. */
+function firstTabPage(tabs: CaseDesignTab[]): number {
+  if (tabs.length === 0) return 1;
+  return tabs.reduce((min, t) => Math.min(min, t.Page_Number__c || 1), Infinity) || 1;
+}
+
 export function CaseDesignPDF({ bundle, householdLabel }: CaseDesignPDFProps) {
-  const { parent, sections, positions, edges, annotations } = bundle;
+  const { parent, tabs, sections, positions, edges, annotations } = bundle;
+  const firstPage = firstTabPage(tabs);
+
+  // The set of pages to render: every tab's page, plus any page referenced by
+  // a position / section / annotation, plus page 1 so an empty design still
+  // prints one page. Records with a null Page_Number resolve to the first page.
   const pageNumbers = Array.from(
     new Set([
+      ...tabs.map((t) => t.Page_Number__c || 1),
+      ...positions.map((p) => p.Page_Number__c ?? firstPage),
       ...sections.map((s) => s.Page_Number__c || 1),
       ...annotations.map((a) => a.Page_Number__c || 1),
       1,
     ])
   ).sort((a, b) => a - b);
+
+  // Map each page → its tab (for the header label/date). No tab → undefined,
+  // which preserves the legacy header (Document_Title only).
+  const tabByPage = new Map<number, CaseDesignTab>();
+  for (const t of tabs) tabByPage.set(t.Page_Number__c || 1, t);
 
   return (
     <Document>
@@ -115,6 +135,8 @@ export function CaseDesignPDF({ bundle, householdLabel }: CaseDesignPDFProps) {
         <PageContent
           key={pn}
           pageNumber={pn}
+          firstPage={firstPage}
+          tab={tabByPage.get(pn)}
           parent={bundle.parent}
           allPositions={positions}
           allEdges={edges}
@@ -133,6 +155,8 @@ export function CaseDesignPDF({ bundle, householdLabel }: CaseDesignPDFProps) {
 
 function PageContent(props: {
   pageNumber: number;
+  firstPage: number;
+  tab: CaseDesignTab | undefined;
   parent: CaseDesignBundle["parent"];
   allPositions: CaseDesignPosition[];
   allEdges: CaseDesignBundle["edges"];
@@ -144,15 +168,23 @@ function PageContent(props: {
   pageIndex: number;
   allHasRoth: boolean;
 }) {
-  const { parent, allPositions, allEdges, sections, annotations, householdLabel, totalPages, pageIndex, allHasRoth } = props;
+  const { parent, tab, allPositions, allEdges, sections, annotations, householdLabel, totalPages, pageIndex, allHasRoth, firstPage } = props;
 
-  // Positions for this page = those whose section.Page_Number matches, OR with no section if first page
+  // Does ANY position carry an explicit Page_Number? If so we're in the
+  // tab-driven model and page membership follows Page_Number. Otherwise fall
+  // back to the legacy section-driven paging so untabbed designs are unchanged.
+  const hasExplicitPaging = allPositions.some((p) => p.Page_Number__c != null);
+
   const pagePositionIds = new Set(
     allPositions
       .filter((p) => {
+        if (hasExplicitPaging) {
+          // null Page_Number resolves to the first page.
+          return (p.Page_Number__c ?? firstPage) === props.pageNumber;
+        }
+        // Legacy: positions whose section is on this page, or unsectioned → page 1.
         const sec = sections.find((s) => s.Id === p.Section__c);
         if (sec) return true;
-        // unsectioned positions go on page 1
         return props.pageNumber === 1 && !p.Section__c;
       })
       .map((p) => p.Id)
@@ -180,7 +212,16 @@ function PageContent(props: {
         <View style={styles.titleBlock}>
           <Text style={styles.household}>{householdLabel}</Text>
           <Text style={styles.title}>{parent.Document_Title__c || "Retirement Money Map"}</Text>
-          <Text style={styles.date}>{formatPlanDate(parent.Plan_Date__c)}</Text>
+          {tab ? (
+            <>
+              <Text style={styles.stageLabel}>{tab.Label__c}</Text>
+              <Text style={styles.date}>
+                {formatPlanDate(tab.Tab_Date__c ?? parent.Plan_Date__c)}
+              </Text>
+            </>
+          ) : (
+            <Text style={styles.date}>{formatPlanDate(parent.Plan_Date__c)}</Text>
+          )}
         </View>
       </View>
 
@@ -309,8 +350,9 @@ function PageContent(props: {
       )}
 
       <Text style={styles.footer}>
-        {householdLabel} · {parent.Document_Title__c || "Retirement Money Map"} ·{" "}
-        {formatPlanDate(parent.Plan_Date__c)} · Page {pageIndex} of {totalPages}
+        {householdLabel} · {parent.Document_Title__c || "Retirement Money Map"}
+        {tab ? ` · ${tab.Label__c}` : ""} ·{" "}
+        {formatPlanDate(tab?.Tab_Date__c ?? parent.Plan_Date__c)} · Page {pageIndex} of {totalPages}
       </Text>
     </Page>
   );

@@ -232,12 +232,28 @@ async function loadVaultIntakes(
   vaultMappings: CmtVaultMapping[],
 ): Promise<VaultBundle> {
   // Compute the set of fields we need on each Vault object from the CMT
-  // mappings, so we only SELECT what's actually used. Saves bytes + survives
-  // future Vault-schema additions without hardcoding. Keep the starter set
-  // MINIMAL to avoid FLS-blocked-field errors that would silently empty the
-  // entire query — anything optional is added only when a mapping needs it.
-  const generalFields = new Set<string>(["Id", "Contact__c", "AI_Parse_Confidence__c", "AI_Parsed_Date__c", "Fields_Needing_Review__c"]);
-  const federalFields = new Set<string>(["Id", "Contact__c", "AI_Parse_Confidence__c", "AI_Parsed_Date__c", "Fields_Needing_Review__c"]);
+  // mappings (balances), then UNION the demographic + eligibility-signal fields
+  // the orchestrator reads directly. The integration user holds FLS for every
+  // field below via CW_Case_Design_Author, so safeVaultQuery won't silently
+  // empty the result. Balance/source fields are still appended dynamically from
+  // the CMT mappings, so future Vault-schema additions need no code change —
+  // only a new mapping record (and its FLS).
+  const generalFields = new Set<string>([
+    "Id", "Contact__c",
+    "AI_Parse_Confidence__c", "AI_Parsed_Date__c", "Fields_Needing_Review__c",
+    // Demographics / eligibility signals read by the orchestrator + rule engine
+    "Date_of_Birth__c", "Employment_Status__c", "Employer__c", "Spouse_Name__c",
+  ]);
+  const federalFields = new Set<string>([
+    "Id", "Contact__c",
+    "AI_Parse_Confidence__c", "AI_Parsed_Date__c", "Fields_Needing_Review__c",
+    // DOB fallback (federal record often has no DOB — Person Account is primary)
+    "Date_of_Birth__c",
+    // Active-vs-separated federal-employee signals. Federal_Benefits_Intake__c
+    // has NO Employment_Status__c, so deriveFederalEmploymentStatus() infers it.
+    "Current_Annual_Salary__c", "Desired_Retirement_Date__c",
+    "LES_Retirement_Deduction__c", "Left_Service_Took_Funds__c",
+  ]);
   for (const m of vaultMappings) {
     if (!m.Active__c) continue;
     const target = m.Source_Object__c === "Federal_Benefits_Intake__c" ? federalFields : generalFields;
@@ -324,6 +340,44 @@ function applyTemplate(
     const v = ctx[k];
     return v == null ? "" : String(v);
   });
+}
+
+/**
+ * Federal_Benefits_Intake__c has no Employment_Status__c picklist, so we infer
+ * whether the person is an ACTIVE federal employee (TSP locked until 59½ or
+ * separation) vs. separated/retired (TSP eligible to roll). Returns a value the
+ * rule engine reads as "employed" / not.
+ *
+ * Conservative default: when no signal is present, treat as an active employee.
+ * Rolling an active employee's TSP is not permitted, so a wrongly-eligible
+ * rollover edge is bad advice; a KEEP badge is safe — the advisor audits it and
+ * can reclassify if the client has in fact separated.
+ */
+function deriveFederalEmploymentStatus(fed: VaultRow): string {
+  const tookFunds = fed.Left_Service_Took_Funds__c === true;
+  const salary =
+    typeof fed.Current_Annual_Salary__c === "number" ? fed.Current_Annual_Salary__c : 0;
+  const lesDeduction =
+    typeof fed.LES_Retirement_Deduction__c === "number"
+      ? fed.LES_Retirement_Deduction__c
+      : 0;
+  const desiredRaw = fed.Desired_Retirement_Date__c as string | null | undefined;
+  const desiredDate = desiredRaw ? new Date(desiredRaw) : null;
+  const desiredValid = desiredDate != null && !isNaN(desiredDate.getTime());
+  const now = new Date();
+
+  // Explicit separation / retirement signals win.
+  if (tookFunds) return "Not Employed";
+  if (desiredValid && (desiredDate as Date) < now) return "Retired";
+
+  // Active-employment signals: current salary, current LES retirement
+  // deductions, or a retirement target still in the future.
+  if (salary > 0 || lesDeduction > 0 || (desiredValid && (desiredDate as Date) >= now)) {
+    return "Employed";
+  }
+
+  // No clear signal → treat as an active federal employee (see doc comment).
+  return "Employed";
 }
 
 function ownerLabelFor(
@@ -529,8 +583,13 @@ export async function generateFromVault(
   for (const person of persons) {
     const gen = vaults.general.get(person.ContactId);
     const fed = vaults.federal.get(person.ContactId);
-    person.EmploymentStatus =
-      (gen?.Employment_Status__c as string | null) ?? person.EmploymentStatus;
+    // Employment status precedence: General Vault picklist > derived federal
+    // signal > whatever was already on the person (Person Account / null).
+    if (gen?.Employment_Status__c) {
+      person.EmploymentStatus = gen.Employment_Status__c as string;
+    } else if (fed) {
+      person.EmploymentStatus = deriveFederalEmploymentStatus(fed);
+    }
     person.EmployerName = (gen?.Employer__c as string | null) ?? person.EmployerName;
     person.SpouseName = (gen?.Spouse_Name__c as string | null) ?? person.SpouseName;
     if (!person.Birthdate) {
@@ -619,38 +678,16 @@ export async function generateFromVault(
   }
 
   if (pending.length === 0) {
-    const personCount = persons.length;
-    const generalRows = vaults.general.size;
-    const federalRows = vaults.federal.size;
-    const mappingCount = cmts.vaultMappings.length;
-    let totalChecked = 0;
-    let totalNonZero = 0;
-    const sampleAmounts: string[] = [];
-    for (const person of persons) {
-      for (const mapping of cmts.vaultMappings) {
-        totalChecked += 1;
-        const vault =
-          mapping.Source_Object__c === "Federal_Benefits_Intake__c"
-            ? vaults.federal.get(person.ContactId)
-            : vaults.general.get(person.ContactId);
-        if (!vault) continue;
-        let amt = 0;
-        if (mapping.Aggregate_Fields__c) {
-          for (const f of mapping.Aggregate_Fields__c.split(",").map((s) => s.trim())) {
-            const v = vault[f];
-            if (typeof v === "number") amt += v;
-          }
-        } else if (mapping.Source_Field__c) {
-          const v = vault[mapping.Source_Field__c];
-          if (typeof v === "number") amt = v;
-        }
-        if (amt > 0) totalNonZero += 1;
-        if (sampleAmounts.length < 5) sampleAmounts.push(`${mapping.DeveloperName}=${amt}`);
-      }
-    }
+    // Nothing mapped: either no parsed Vault rows at all (→ client falls back to
+    // the legacy Opp-history auto-fill), or rows exist but every balance was
+    // below its mapping's minimum. Distinguish the two so the advisor knows
+    // whether the Vault was empty vs. simply had no qualifying balances.
+    const hadVaultRows = vaults.general.size > 0 || vaults.federal.size > 0;
     return makeSkipResult(
       "skipped-no-vault",
-      `Diag: persons=${personCount} genRows=${generalRows} fedRows=${federalRows} mappings=${mappingCount} checked=${totalChecked} nonZero=${totalNonZero} sample=[${sampleAmounts.join(", ")}]`,
+      hadVaultRows
+        ? "Vault data found, but no account balance met its minimum to map — falling back to other sources"
+        : "No parsed Vault data for this household — falling back to other sources",
     );
   }
 
@@ -819,6 +856,38 @@ export async function generateFromVault(
   }
 
   return result;
+}
+
+/**
+ * Reset a previously-generated Case Design back to a clean Draft so it can be
+ * regenerated from Vault (the "Reset & Regenerate" overflow action / Q8).
+ * Deletes child edges (FK to positions) first, then positions, then clears the
+ * audit stamp so generateFromVault no longer refuses with skipped-existing.
+ * Caller must enforce Draft-only.
+ */
+export async function resetGeneratedCaseDesign(caseDesignId: string): Promise<void> {
+  const cdId = safeId(caseDesignId);
+  const conn = await getSFConnection();
+
+  const edges = await conn.query<{ Id: string }>(
+    `SELECT Id FROM Case_Design_Edge__c WHERE Case_Design__c = '${cdId}'`,
+  );
+  if (edges.records.length > 0) {
+    await conn.sobject("Case_Design_Edge__c").destroy(edges.records.map((e) => e.Id));
+  }
+
+  const positions = await conn.query<{ Id: string }>(
+    `SELECT Id FROM Case_Design_Position__c WHERE Case_Design__c = '${cdId}'`,
+  );
+  if (positions.records.length > 0) {
+    await conn.sobject("Case_Design_Position__c").destroy(positions.records.map((p) => p.Id));
+  }
+
+  await conn.sobject("Case_Design__c").update({
+    Id: cdId,
+    Generated_From_Vault_At__c: null,
+    Generation_Summary__c: null,
+  });
 }
 
 function makeSkipResult(

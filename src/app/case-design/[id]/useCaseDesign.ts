@@ -5,10 +5,11 @@
  */
 "use client";
 
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type {
   CaseDesignBundle,
   CaseDesignParent,
+  CaseDesignTab,
   CaseDesignSection,
   CaseDesignPosition,
   CaseDesignEdge,
@@ -18,6 +19,9 @@ import type {
 type Action =
   | { type: "set-bundle"; bundle: CaseDesignBundle }
   | { type: "patch-parent"; patch: Partial<CaseDesignParent> }
+  | { type: "upsert-tab"; row: CaseDesignTab }
+  | { type: "patch-tab"; id: string; patch: Partial<CaseDesignTab> }
+  | { type: "remove-tab"; id: string }
   | { type: "upsert-position"; row: CaseDesignPosition }
   | { type: "patch-position"; id: string; patch: Partial<CaseDesignPosition> }
   | { type: "remove-position"; id: string }
@@ -37,6 +41,22 @@ function reducer(state: CaseDesignBundle, action: Action): CaseDesignBundle {
       return action.bundle;
     case "patch-parent":
       return { ...state, parent: { ...state.parent, ...action.patch } };
+    case "upsert-tab": {
+      const exists = state.tabs.some((t) => t.Id === action.row.Id);
+      const tabs = exists
+        ? state.tabs.map((t) => (t.Id === action.row.Id ? action.row : t))
+        : [...state.tabs, action.row];
+      return { ...state, tabs };
+    }
+    case "patch-tab":
+      return {
+        ...state,
+        tabs: state.tabs.map((t) =>
+          t.Id === action.id ? { ...t, ...action.patch } : t
+        ),
+      };
+    case "remove-tab":
+      return { ...state, tabs: state.tabs.filter((t) => t.Id !== action.id) };
     case "upsert-position": {
       const exists = state.positions.some((p) => p.Id === action.row.Id);
       const positions = exists
@@ -106,12 +126,47 @@ function reducer(state: CaseDesignBundle, action: Action): CaseDesignBundle {
   }
 }
 
+/**
+ * The Page_Number every legacy / untabbed record resolves to: the lowest tab
+ * Page_Number, or 1 when there are no tabs. Records with a null Page_Number
+ * (legacy single-page Case Designs) always land on the first tab.
+ */
+export function firstPageNumber(tabs: CaseDesignTab[]): number {
+  if (tabs.length === 0) return 1;
+  return tabs.reduce((min, t) => Math.min(min, t.Page_Number__c ?? 1), Infinity) || 1;
+}
+
+/** Resolve which page a record belongs to. Null Page_Number → first tab. */
+export function resolvePage(pageNumber: number | null, tabs: CaseDesignTab[]): number {
+  return pageNumber ?? firstPageNumber(tabs);
+}
+
+/**
+ * Default active tab: the tab with the LOWEST Sort_Order (fallback
+ * Page_Number). Returns the resolved Page_Number, or the implicit first page
+ * (firstPageNumber) when there are no tabs.
+ */
+export function defaultActivePage(tabs: CaseDesignTab[]): number {
+  if (tabs.length === 0) return firstPageNumber(tabs);
+  const sorted = [...tabs].sort((a, b) => {
+    const sa = a.Sort_Order__c ?? a.Page_Number__c ?? 0;
+    const sb = b.Sort_Order__c ?? b.Page_Number__c ?? 0;
+    return sa - sb;
+  });
+  return sorted[0].Page_Number__c ?? 1;
+}
+
 interface UseCaseDesignReturn {
   bundle: CaseDesignBundle;
   saving: boolean;
   lastSavedAt: Date | null;
+  activePage: number;
+  setActivePage(page: number): void;
   refetch(): Promise<void>;
   updateParent(patch: Partial<CaseDesignParent>): Promise<void>;
+  addTab(data: Partial<CaseDesignTab>): Promise<string>;
+  updateTab(id: string, patch: Partial<CaseDesignTab>): Promise<void>;
+  deleteTab(id: string): Promise<void>;
   addPosition(data: Partial<CaseDesignPosition>): Promise<string>;
   updatePosition(id: string, patch: Partial<CaseDesignPosition>): Promise<void>;
   deletePosition(id: string): Promise<void>;
@@ -131,6 +186,25 @@ export function useCaseDesign(initial: CaseDesignBundle): UseCaseDesignReturn {
   const [inflight, setInflight] = useState(0);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const caseDesignId = initial.parent.Id;
+
+  // The user's chosen active tab (page). Defaults to the lowest-Sort_Order
+  // tab, or the implicit first page when no tabs exist.
+  const [activePageIntent, setActivePageState] = useState<number>(() =>
+    defaultActivePage(initial.tabs)
+  );
+  const setActivePage = useCallback((page: number) => setActivePageState(page), []);
+
+  // Effective active page: the user's intent, CLAMPED to a live tab. If the
+  // active tab was deleted (server reconcile drops it), fall back to the
+  // default tab — derived, so no setState-in-effect cascade. When no tabs
+  // exist the implicit first page is always valid.
+  const activePage = useMemo(() => {
+    if (bundle.tabs.length === 0) return activePageIntent;
+    const stillExists = bundle.tabs.some(
+      (t) => (t.Page_Number__c ?? 1) === activePageIntent
+    );
+    return stillExists ? activePageIntent : defaultActivePage(bundle.tabs);
+  }, [bundle.tabs, activePageIntent]);
 
   const refetch = useCallback(async () => {
     try {
@@ -205,15 +279,74 @@ export function useCaseDesign(initial: CaseDesignBundle): UseCaseDesignReturn {
     [caseDesignId, runRequest, scheduleRefetch]
   );
 
+  // ---- tabs ----
+  const addTab = useCallback(
+    async (data: Partial<CaseDesignTab>): Promise<string> => {
+      const { id } = await runRequest<{ id: string }>(
+        `/api/case-design/${caseDesignId}/tabs`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(data),
+        }
+      );
+      const optimistic: CaseDesignTab = {
+        Id: id,
+        Name: data.Name ?? "",
+        Case_Design__c: caseDesignId,
+        Label__c: data.Label__c ?? "New Tab",
+        Tab_Date__c: data.Tab_Date__c ?? null,
+        Page_Number__c: data.Page_Number__c ?? 1,
+        Sort_Order__c: data.Sort_Order__c ?? null,
+      };
+      dispatch({ type: "upsert-tab", row: optimistic });
+      scheduleRefetch();
+      return id;
+    },
+    [caseDesignId, runRequest, scheduleRefetch]
+  );
+
+  const updateTab = useCallback(
+    async (id: string, patch: Partial<CaseDesignTab>) => {
+      dispatch({ type: "patch-tab", id, patch });
+      await runRequest(`/api/case-design/${caseDesignId}/tabs`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id, ...patch }),
+      });
+      scheduleRefetch();
+    },
+    [caseDesignId, runRequest, scheduleRefetch]
+  );
+
+  const deleteTab = useCallback(
+    async (id: string) => {
+      dispatch({ type: "remove-tab", id });
+      await runRequest(`/api/case-design/${caseDesignId}/tabs`, {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      scheduleRefetch();
+    },
+    [caseDesignId, runRequest, scheduleRefetch]
+  );
+
   // ---- positions ----
   const addPosition = useCallback(
     async (data: Partial<CaseDesignPosition>): Promise<string> => {
+      // Stamp the active tab's page onto new positions so they belong to the
+      // tab the advisor is currently looking at. Caller-supplied values win.
+      const payload: Partial<CaseDesignPosition> = {
+        Page_Number__c: activePage,
+        ...data,
+      };
       const { id } = await runRequest<{ id: string }>(
         `/api/case-design/${caseDesignId}/positions`,
         {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify(data),
+          body: JSON.stringify(payload),
         }
       );
       const optimistic: CaseDesignPosition = {
@@ -245,12 +378,13 @@ export function useCaseDesign(initial: CaseDesignBundle): UseCaseDesignReturn {
         Position_X__c: data.Position_X__c ?? null,
         Position_Y__c: data.Position_Y__c ?? null,
         Replaces_Position__c: data.Replaces_Position__c ?? null,
+        Page_Number__c: payload.Page_Number__c ?? null,
       };
       dispatch({ type: "upsert-position", row: optimistic });
       scheduleRefetch();
       return id;
     },
-    [caseDesignId, runRequest, scheduleRefetch]
+    [caseDesignId, runRequest, scheduleRefetch, activePage]
   );
 
   const updatePosition = useCallback(
@@ -336,12 +470,17 @@ export function useCaseDesign(initial: CaseDesignBundle): UseCaseDesignReturn {
   // ---- edges ----
   const addEdge = useCallback(
     async (data: Partial<CaseDesignEdge>): Promise<string> => {
+      // Stamp the active tab's page onto new edges. Caller-supplied wins.
+      const payload: Partial<CaseDesignEdge> = {
+        Page_Number__c: activePage,
+        ...data,
+      };
       const { id } = await runRequest<{ id: string }>(
         `/api/case-design/${caseDesignId}/edges`,
         {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify(data),
+          body: JSON.stringify(payload),
         }
       );
       const optimistic: CaseDesignEdge = {
@@ -360,12 +499,13 @@ export function useCaseDesign(initial: CaseDesignBundle): UseCaseDesignReturn {
         Timing_Note__c: data.Timing_Note__c ?? null,
         Stage__c: data.Stage__c ?? null,
         Status__c: data.Status__c ?? "Planned",
+        Page_Number__c: payload.Page_Number__c ?? null,
       };
       dispatch({ type: "upsert-edge", row: optimistic });
       scheduleRefetch();
       return id;
     },
-    [caseDesignId, runRequest, scheduleRefetch]
+    [caseDesignId, runRequest, scheduleRefetch, activePage]
   );
 
   const updateEdge = useCallback(
@@ -454,8 +594,13 @@ export function useCaseDesign(initial: CaseDesignBundle): UseCaseDesignReturn {
     bundle,
     saving: inflight > 0,
     lastSavedAt,
+    activePage,
+    setActivePage,
     refetch,
     updateParent,
+    addTab,
+    updateTab,
+    deleteTab,
     addPosition,
     updatePosition,
     deletePosition,
