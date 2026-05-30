@@ -1,14 +1,10 @@
 import { NextRequest } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
 import { getSFConnection } from "@/lib/salesforce/connector";
 import { listIntakeDocuments, downloadFromSalesforce } from "@/lib/salesforce/files";
 import { parseDocument, mergeParseResults } from "@/lib/parsing/document-parser";
 import { updateIntake } from "@/lib/salesforce/connector";
-import { SF_CONFIG } from "@/config";
+import { SF_CONFIG, PARSE_SERVICE } from "@/config";
 import type { DocumentType, FederalBenefitsIntake } from "@/types";
-
-const anthropic = new Anthropic();
-const PARSER_MODEL = "claude-opus-4-7";
 
 /**
  * POST /api/parse — Parse uploaded documents and update Salesforce.
@@ -134,8 +130,6 @@ Rules:
 - If a field is not in this document, use null — do NOT guess.
 - For balances, use the most recent/current value, not the year-start or beginning-balance.`;
 
-const PARSE_TIMEOUT_MS = 120_000;
-
 interface GeneralParseOutput {
   annualIncome?: number | null;
   iraTraditionalBalance?: number | null;
@@ -154,49 +148,28 @@ async function parseGeneralDoc(
   mimeType: string,
   fileName: string
 ): Promise<{ fields: GeneralParseOutput; success: boolean; error?: string }> {
-  const supportedImageTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const;
-  type SupportedImageType = typeof supportedImageTypes[number];
+  const supportedImageTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
   const isPdf = mimeType === "application/pdf";
-  const isImage = (supportedImageTypes as readonly string[]).includes(mimeType);
+  const isImage = supportedImageTypes.includes(mimeType);
   if (!isPdf && !isImage) return { fields: {}, success: false, error: `Unsupported mime: ${mimeType}` };
 
-  const docBlock = isPdf
-    ? {
-        type: "document" as const,
-        source: { type: "base64" as const, media_type: "application/pdf" as const, data: buffer.toString("base64") },
-      }
-    : {
-        type: "image" as const,
-        source: { type: "base64" as const, media_type: mimeType as SupportedImageType, data: buffer.toString("base64") },
-      };
-
   try {
-    const response = await anthropic.messages.create(
-      {
-        model: PARSER_MODEL,
-        max_tokens: 2048,
-        messages: [{
-          role: "user",
-          content: [
-            docBlock,
-            { type: "text", text: `Analyze this retirement document named "${fileName}" and extract the fields described.\n\n${GENERAL_PROMPT}` },
-          ],
-        }],
-      },
-      { timeout: PARSE_TIMEOUT_MS },
-    );
-
-    const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === "text");
-    if (!textBlock) return { fields: {}, success: false, error: "No text response from Claude" };
-
-    const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return { fields: {}, success: false, error: `No JSON in response: ${textBlock.text.slice(0, 200)}` };
-
-    const fields = JSON.parse(jsonMatch[0]) as GeneralParseOutput;
-    return { fields, success: true };
+    const res = await fetch(`${PARSE_SERVICE.url}/parse`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-parse-secret": PARSE_SERVICE.secret },
+      body: JSON.stringify({ mime: mimeType, docBase64: buffer.toString("base64"), prompt: GENERAL_PROMPT }),
+      signal: AbortSignal.timeout(PARSE_SERVICE.timeoutMs),
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      return { fields: {}, success: false, error: `${fileName}: parse service ${res.status}: ${detail.slice(0, 200)}` };
+    }
+    // Only fields both blind passes agreed on come back in `accepted`.
+    const data = (await res.json()) as { accepted?: Record<string, unknown> };
+    return { fields: (data.accepted ?? {}) as GeneralParseOutput, success: true };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return { fields: {}, success: false, error: msg };
+    return { fields: {}, success: false, error: `${fileName}: ${msg}` };
   }
 }
 
