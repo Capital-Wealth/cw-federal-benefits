@@ -97,8 +97,11 @@ Extract these fields exactly. Return ONLY a JSON object with these keys (use nul
 Extract these fields exactly. Return ONLY a JSON object with these keys (use null for any field not found):
 
 {
-  "tspTradBalances": { "L": number, "G": number, "F": number, "C": number, "S": number, "I": number },
-  "tspRothBalances": { "L": number, "G": number, "F": number, "C": number, "S": number, "I": number },
+  "tspFundBalances": { "L": number, "G": number, "F": number, "C": number, "S": number, "I": number } (WHOLE-ACCOUNT balance in each fund — traditional and Roth COMBINED, exactly as the statement's fund-allocation/balance table prints it. This is usually all the statement gives per fund.),
+  "tspTraditionalTotal": number (total of ALL traditional / pre-tax sources combined: employee traditional + agency matching + agency automatic 1% + any tax-deferred rollover),
+  "tspRothTotal": number (total Roth balance, including Roth basis),
+  "tspTradBalances": { "L": number, "G": number, "F": number, "C": number, "S": number, "I": number } (ONLY if the statement explicitly prints per-fund balances split by traditional source; otherwise null — do NOT guess the split),
+  "tspRothBalances": { "L": number, "G": number, "F": number, "C": number, "S": number, "I": number } (ONLY if explicitly split by Roth source per fund; otherwise null),
   "tspTradAllocations": { "L": number, "G": number, "F": number, "C": number, "S": number, "I": number } (percentages 0-100),
   "tspRothAllocations": { "L": number, "G": number, "F": number, "C": number, "S": number, "I": number } (percentages 0-100),
   "tspTradBiweeklyPct": number (traditional contribution percentage),
@@ -111,7 +114,7 @@ Extract these fields exactly. Return ONLY a JSON object with these keys (use nul
   "tspRothLFund": string (L Fund name for Roth)
 }
 
-For fund balances, set any fund not present to 0.`,
+Use null for any fund or field you cannot read — NEVER write 0 for a value that is simply not shown. (The system derives the per-fund traditional/Roth split from tspFundBalances + the two totals; you only need to transcribe what is printed.)`,
 
   DD214: `You are analyzing a DD-214 (Certificate of Release or Discharge from Active Duty).
 Extract these fields exactly. Return ONLY a JSON object with these keys (use null for any field not found):
@@ -180,8 +183,11 @@ CRITICAL if this is an LES: high-3 includes more than base pay. Sum ALL retireme
   "lesAllotment": number,
   "fegliBiweeklyPremium": number,
   "fehbBiweeklyPremium": number,
-  "tspTradBalances": { "L": number, "G": number, "F": number, "C": number, "S": number, "I": number },
-  "tspRothBalances": { "L": number, "G": number, "F": number, "C": number, "S": number, "I": number },
+  "tspFundBalances": { "L": number, "G": number, "F": number, "C": number, "S": number, "I": number } (if a TSP statement: WHOLE-ACCOUNT balance per fund, traditional+Roth combined, as printed; null otherwise),
+  "tspTraditionalTotal": number (if a TSP statement: total of all traditional/pre-tax sources — employee + match + auto 1% + tax-deferred rollover),
+  "tspRothTotal": number (if a TSP statement: total Roth balance),
+  "tspTradBalances": { "L": number, "G": number, "F": number, "C": number, "S": number, "I": number } (only if explicitly split per fund by traditional source; else null — never guess),
+  "tspRothBalances": { "L": number, "G": number, "F": number, "C": number, "S": number, "I": number } (only if explicitly split per fund by Roth source; else null — never guess),
   "tspTradAllocations": { "L": number, "G": number, "F": number, "C": number, "S": number, "I": number },
   "tspRothAllocations": { "L": number, "G": number, "F": number, "C": number, "S": number, "I": number },
   "tspTradBiweeklyPct": number,
@@ -300,6 +306,44 @@ export async function parseDocument(
 }
 
 // ============================================================
+// TSP traditional/Roth per-fund split
+// ============================================================
+
+const TSP_FUNDS = ["G", "F", "C", "S", "I", "L"] as const;
+
+/**
+ * TSP statements print balances per FUND (whole account) and totals per SOURCE
+ * (traditional vs Roth) — but almost never the per-fund × per-source cross
+ * product the calc engine needs. Derive it: assume Roth is spread across the
+ * funds in the SAME proportion as the whole account, i.e. each fund is
+ * roth% = rothTotal / (tradTotal + rothTotal). So if the account is 5% Roth,
+ * each fund's balance is 5% Roth / 95% traditional. This reconciles exactly —
+ * the per-fund traditional pieces sum back to the traditional total and the
+ * Roth pieces to the Roth total. Mutates `merged` in place; runs on every parse.
+ */
+function deriveTspRothSplit(merged: Record<string, unknown>): void {
+  const fb = merged.tspFundBalances as Record<string, number> | undefined;
+  const tradTotal = Number(merged.tspTraditionalTotal);
+  const rothTotal = Number(merged.tspRothTotal);
+  if (!fb || !Number.isFinite(tradTotal) || !Number.isFinite(rothTotal)) return;
+  const total = tradTotal + rothTotal;
+  if (total <= 0) return;
+  const rothFrac = rothTotal / total;
+
+  const trad = { ...(merged.tspTradBalances as Record<string, number> | undefined ?? {}) };
+  const roth = { ...(merged.tspRothBalances as Record<string, number> | undefined ?? {}) };
+  for (const f of TSP_FUNDS) {
+    const bal = Number(fb[f]);
+    if (!Number.isFinite(bal) || bal <= 0) continue;
+    const rothPart = Math.round(bal * rothFrac * 100) / 100;
+    roth[f] = rothPart;
+    trad[f] = Math.round((bal - rothPart) * 100) / 100;
+  }
+  merged.tspTradBalances = trad;
+  merged.tspRothBalances = roth;
+}
+
+// ============================================================
 // Multi-Document Merge
 // ============================================================
 
@@ -372,6 +416,10 @@ export function mergeParseResults(
       fieldsNeedingReview.push(`${fieldName} (low confidence: ${confidence}%)`);
     }
   }
+
+  // Always derive the per-fund traditional/Roth split from the statement's
+  // fund totals + source totals (statements rarely print the cross product).
+  deriveTspRothSplit(merged);
 
   return { merged, confidence: avgConfidence, fieldsNeedingReview };
 }

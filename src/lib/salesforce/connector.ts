@@ -251,17 +251,20 @@ export function intakeToSFRecord(intake: Partial<FederalBenefitsIntake>): Record
     }
   }
 
-  // Flatten TSP balances
+  // Flatten TSP balances. SAFETY: only write a positive balance. A failed or
+  // partial parse returns 0/absent for funds it couldn't read; writing those
+  // would wipe a previously-good balance (this destroyed Kathy Andersen's
+  // $1.05M TSP). Never overwrite existing data with a 0/blank.
   if (intake.tspTradBalances) {
     for (const fund of TSP_FUNDS) {
       const val = intake.tspTradBalances[fund as keyof typeof intake.tspTradBalances];
-      if (val !== undefined) record[`TSP_Trad_${fund}_Balance__c`] = val;
+      if (typeof val === "number" && val > 0) record[`TSP_Trad_${fund}_Balance__c`] = val;
     }
   }
   if (intake.tspRothBalances) {
     for (const fund of TSP_FUNDS) {
       const val = intake.tspRothBalances[fund as keyof typeof intake.tspRothBalances];
-      if (val !== undefined) record[`TSP_Roth_${fund}_Balance__c`] = val;
+      if (typeof val === "number" && val > 0) record[`TSP_Roth_${fund}_Balance__c`] = val;
     }
   }
   if (intake.tspTradAllocations) {
