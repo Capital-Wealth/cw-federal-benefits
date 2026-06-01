@@ -172,7 +172,7 @@ export default function LivePlanClient({
   const [generating, setGenerating] = useState(false);
   const [reparsing, setReparsing] = useState(false);
   const [message, setMessage] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
-  const [docs, setDocs] = useState<{ id: string; title: string; fileType: string; sizeBytes: number }[]>([]);
+  const [docs, setDocs] = useState<{ id: string; title: string; fileType: string; sizeBytes: number; createdDate: string }[]>([]);
 
   const sessionToken = typeof window !== "undefined"
     ? new URLSearchParams(window.location.search).get("session")
@@ -323,7 +323,13 @@ export default function LivePlanClient({
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || `PDF generation failed (${res.status})`);
-      setMessage({ kind: "ok", text: `PDF generated and attached to the SF record.` });
+      setMessage({ kind: "ok", text: `PDF generated, saved to Salesforce, and added to Uploaded Documents below (marked LATEST).` });
+      // Refresh the documents list so the just-generated comparison report
+      // appears immediately at the top with its upload date.
+      try {
+        const dres = await fetch(`/api/plan/documents?token=${sessionToken}`);
+        if (dres.ok) { const dj = await dres.json(); setDocs(dj.documents || []); }
+      } catch { /* non-fatal — it will appear on next load */ }
     } catch (e) {
       setMessage({ kind: "err", text: e instanceof Error ? e.message : "PDF failed" });
     } finally {
@@ -536,7 +542,8 @@ export default function LivePlanClient({
               </p>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {docs.map((d) => (
+                {/* Sorted newest-first by the API; index 0 is the most recent upload. */}
+                {docs.map((d, i) => (
                   <a
                     key={d.id}
                     href={`/api/plan/document/${d.id}?token=${sessionToken}`}
@@ -545,15 +552,18 @@ export default function LivePlanClient({
                     style={{
                       display: "flex", alignItems: "center", justifyContent: "space-between",
                       gap: 10, padding: "8px 10px", borderRadius: 4,
-                      border: "1px solid #E5E7EB", textDecoration: "none",
-                      background: "#fafbfc",
+                      border: i === 0 ? "1px solid #C7A356" : "1px solid #E5E7EB", textDecoration: "none",
+                      background: i === 0 ? "#fdf7ea" : "#fafbfc",
                     }}
                   >
                     <span style={{ fontSize: 12, color: "#16253C", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       📄 {d.title}
+                      {i === 0 ? <span style={{ marginLeft: 6, fontSize: 9, color: "#C7A356", fontWeight: 700, letterSpacing: 1 }}>● LATEST</span> : null}
                     </span>
                     <span style={{ fontSize: 10, color: "#6B7280", flexShrink: 0 }}>
-                      {d.fileType} · {(d.sizeBytes / 1024).toFixed(0)} KB · View ↗
+                      {d.createdDate
+                        ? new Date(d.createdDate).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })
+                        : ""} · {d.fileType} · {(d.sizeBytes / 1024).toFixed(0)} KB · View ↗
                     </span>
                   </a>
                 ))}
