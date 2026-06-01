@@ -56,13 +56,12 @@ async function parseFederal(intakeId: string): Promise<Response> {
   const parseResults: ParseResult[] = [];
   const errors: string[] = [];
 
-  // Parse in bounded-concurrency batches. The Winchester service now runs the
-  // passes on Sonnet (~45s/doc vs Opus blowing past Cloudflare's 100s edge
-  // limit), so each doc reliably finishes in time. Concurrency 2 keeps the
-  // single-host service comfortable while bringing a 6-doc intake in ~3 batches
-  // (well under maxDuration=300). The two blind passes per doc run concurrently
-  // inside the service, so this is ~4 Sonnet calls in flight at peak.
-  const CONCURRENCY = 2;
+  // Parse SEQUENTIALLY. The Winchester service is a single CPU-bound Mac; the
+  // two blind passes per doc ALREADY run concurrently inside it (2 Sonnet
+  // procs). Adding doc-level concurrency on top just thrashes the CPU and makes
+  // every pass slower (and trips Cloudflare's 100s edge limit). Sonnet keeps
+  // each doc ~45s isolated, so a typical intake stays well under maxDuration.
+  const CONCURRENCY = 1;
   for (let i = 0; i < documents.length; i += CONCURRENCY) {
     const batch = documents.slice(i, i + CONCURRENCY);
     const settled = await Promise.all(
