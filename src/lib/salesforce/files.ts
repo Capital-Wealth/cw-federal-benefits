@@ -121,15 +121,19 @@ export async function downloadFromSalesforce(
   const fileName = cv.PathOnClient as string;
   const fileType = cv.FileType as string;
 
-  // Download the binary data
-  const response = await conn.request({
-    method: "GET",
-    url: `/services/data/v66.0/sobjects/ContentVersion/${contentVersionId}/VersionData`,
-    headers: { Accept: "*/*" },
-  });
-
-  // The response is the raw binary data
-  const buffer = Buffer.from(response as unknown as ArrayBuffer);
+  // Download the binary data. NOTE: jsforce's conn.request() decodes the body
+  // as a UTF-8 string, which silently corrupts binary files (PDFs render blank,
+  // and the parser was being fed garbage bytes). Fetch the raw bytes directly
+  // off the instance URL with the live access token so the buffer is the true
+  // binary content.
+  const res = await fetch(
+    `${conn.instanceUrl}/services/data/v66.0/sobjects/ContentVersion/${contentVersionId}/VersionData`,
+    { headers: { Authorization: `Bearer ${conn.accessToken}`, Accept: "*/*" } }
+  );
+  if (!res.ok) {
+    throw new Error(`Failed to download VersionData ${contentVersionId}: ${res.status} ${res.statusText}`);
+  }
+  const buffer = Buffer.from(await res.arrayBuffer());
 
   // Map SF FileType to MIME type
   const mimeMap: Record<string, string> = {
