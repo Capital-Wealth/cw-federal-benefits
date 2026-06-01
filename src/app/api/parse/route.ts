@@ -4,7 +4,13 @@ import { listIntakeDocuments, downloadFromSalesforce } from "@/lib/salesforce/fi
 import { parseDocument, mergeParseResults } from "@/lib/parsing/document-parser";
 import { updateIntake } from "@/lib/salesforce/connector";
 import { SF_CONFIG, PARSE_SERVICE } from "@/config";
-import type { DocumentType, FederalBenefitsIntake } from "@/types";
+import type { DocumentType, FederalBenefitsIntake, ParseResult } from "@/types";
+
+// Each document is parsed twice (blind verify) through the Winchester CLI, so a
+// multi-doc intake takes minutes. Parse them concurrently (bounded) AND give the
+// function the headroom it needs — sequential parsing blew past the default
+// timeout and returned 504 with nothing written once parsing actually did work.
+export const maxDuration = 300;
 
 /**
  * POST /api/parse — Parse uploaded documents and update Salesforce.
@@ -47,24 +53,37 @@ async function parseFederal(intakeId: string): Promise<Response> {
     return Response.json({ error: "No documents found on this record" }, { status: 404 });
   }
 
-  const parseResults = [];
-  const errors = [];
+  const parseResults: ParseResult[] = [];
+  const errors: string[] = [];
 
-  for (const doc of documents) {
-    try {
-      const { buffer, fileName, mimeType } = await downloadFromSalesforce(doc.contentVersionId);
-
-      const result = await parseDocument(
-        buffer,
-        mimeType,
-        doc.documentType as DocumentType,
-        fileName
-      );
-      result.documentId = doc.contentVersionId;
-      parseResults.push(result);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      errors.push(`Failed to parse ${doc.title}: ${msg}`);
+  // Parse in bounded-concurrency batches: wall time ≈ slowest doc per batch
+  // instead of the sum of all docs, which is what overran the function timeout.
+  // Cap concurrency so we don't fire a dozen simultaneous Opus passes at the
+  // single-host Winchester service.
+  const CONCURRENCY = 3;
+  for (let i = 0; i < documents.length; i += CONCURRENCY) {
+    const batch = documents.slice(i, i + CONCURRENCY);
+    const settled = await Promise.all(
+      batch.map(async (doc) => {
+        try {
+          const { buffer, fileName, mimeType } = await downloadFromSalesforce(doc.contentVersionId);
+          const result = await parseDocument(
+            buffer,
+            mimeType,
+            doc.documentType as DocumentType,
+            fileName
+          );
+          result.documentId = doc.contentVersionId;
+          return { ok: true as const, result };
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          return { ok: false as const, error: `Failed to parse ${doc.title}: ${msg}` };
+        }
+      })
+    );
+    for (const s of settled) {
+      if (s.ok) parseResults.push(s.result);
+      else errors.push(s.error);
     }
   }
 
