@@ -56,11 +56,14 @@ async function parseFederal(intakeId: string): Promise<Response> {
   const parseResults: ParseResult[] = [];
   const errors: string[] = [];
 
-  // Parse in bounded-concurrency batches: wall time ≈ slowest doc per batch
-  // instead of the sum of all docs, which is what overran the function timeout.
-  // Cap concurrency so we don't fire a dozen simultaneous Opus passes at the
-  // single-host Winchester service.
-  const CONCURRENCY = 3;
+  // Parse in bounded-concurrency batches. The Winchester service is a SINGLE
+  // host driving the Opus CLI (two passes per doc); firing 3 docs at once
+  // overloaded it and tripped Cloudflare's 100s edge timeout (524) on the
+  // slower statements, so nothing got accepted. Keep this at 1 (sequential)
+  // until the parse backend can take real concurrency. maxDuration=300 covers
+  // the common 1–3 doc intake; very large sets remain a known edge case for the
+  // planned async-job redesign.
+  const CONCURRENCY = 1;
   for (let i = 0; i < documents.length; i += CONCURRENCY) {
     const batch = documents.slice(i, i + CONCURRENCY);
     const settled = await Promise.all(
