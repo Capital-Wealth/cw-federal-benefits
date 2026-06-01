@@ -56,14 +56,13 @@ async function parseFederal(intakeId: string): Promise<Response> {
   const parseResults: ParseResult[] = [];
   const errors: string[] = [];
 
-  // Parse in bounded-concurrency batches. The Winchester service is a SINGLE
-  // host driving the Opus CLI (two passes per doc); firing 3 docs at once
-  // overloaded it and tripped Cloudflare's 100s edge timeout (524) on the
-  // slower statements, so nothing got accepted. Keep this at 1 (sequential)
-  // until the parse backend can take real concurrency. maxDuration=300 covers
-  // the common 1–3 doc intake; very large sets remain a known edge case for the
-  // planned async-job redesign.
-  const CONCURRENCY = 1;
+  // Parse in bounded-concurrency batches. The Winchester service now runs the
+  // passes on Sonnet (~45s/doc vs Opus blowing past Cloudflare's 100s edge
+  // limit), so each doc reliably finishes in time. Concurrency 2 keeps the
+  // single-host service comfortable while bringing a 6-doc intake in ~3 batches
+  // (well under maxDuration=300). The two blind passes per doc run concurrently
+  // inside the service, so this is ~4 Sonnet calls in flight at peak.
+  const CONCURRENCY = 2;
   for (let i = 0; i < documents.length; i += CONCURRENCY) {
     const batch = documents.slice(i, i + CONCURRENCY);
     const settled = await Promise.all(
