@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
       Field_Api_Name__c: c.field,
       Old_Value__c: c.oldValue == null ? null : String(c.oldValue).slice(0, 255),
       New_Value__c: c.newValue == null ? null : String(c.newValue).slice(0, 255),
-      Edited_By__c: session.userId,
+      Edited_By__c: session.userId ?? null, // null with a stateless (no-user) token; nillable User lookup
       Edited_At__c: now,
       Computed_Annual_Annuity__c: body.computedAnnualAnnuity,
       Source__c: "Live Plan",

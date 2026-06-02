@@ -372,7 +372,7 @@ export default function LivePlanClient({
           </div>
           <div style={{ textAlign: "right", fontSize: 12, color: "#cad4e2" }}>
             <div><strong style={{ color: "#fff" }}>{clientName ?? "—"}</strong></div>
-            <div>Edited by {session.userName}</div>
+            <div>Edited by {session.userName ?? "Advisor"}</div>
           </div>
         </div>
       </header>
