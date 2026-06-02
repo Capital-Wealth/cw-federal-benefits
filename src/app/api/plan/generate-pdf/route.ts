@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
 
   // Step 3 — upload to SF + multi-link
   const employeeName = calc.employeeName ?? "Federal Employee";
-  const fileName = `${employeeName} - Federal Benefit Comparison`;
+  const fileName = `${employeeName} - Benefit Gap Analysis`;
 
   const conn = await getSFConnection();
 
@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
     Title: fileName,
     PathOnClient: fileName + ".pdf",
     VersionData: pdfBuffer.toString("base64"),
-    Description: `Federal Benefit Comparison — Live Plan locked at ${new Date().toISOString()}`,
+    Description: `Benefit Gap Analysis — Live Plan locked at ${new Date().toISOString()}`,
     FirstPublishLocationId: intakeId,
   });
   if (!cv.success) {
