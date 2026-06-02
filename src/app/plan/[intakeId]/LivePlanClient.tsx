@@ -341,7 +341,7 @@ export default function LivePlanClient({
       <header style={{ background: "#16253C", color: "#fff", padding: "16px 32px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "3px solid #C7A356" }}>
         <div>
           <div style={{ fontFamily: FONT_DISPLAY, fontSize: 22, color: "#C7A356", letterSpacing: 2 }}>CAPITAL WEALTH</div>
-          <div style={{ fontSize: 11, color: "#cad4e2", letterSpacing: 3 }}>FEDERAL BENEFIT COMPARISON — LIVE PLAN v1.1</div>
+          <div style={{ fontSize: 11, color: "#cad4e2", letterSpacing: 3 }}>BENEFIT GAP ANALYSIS — LIVE PLAN</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -650,7 +650,7 @@ function PlanColumn(props: {
         </div>
       )}
       <div style={{ fontSize: 10, color: "#C7A356", letterSpacing: 3, fontWeight: 600 }}>YOUR PLAN AT A GLANCE</div>
-      <h1 style={{ fontFamily: FONT_DISPLAY, fontSize: 26, color: "#16253C", margin: "4px 0 8px" }}>Federal Employee Benefits Summary</h1>
+      <h1 style={{ fontFamily: FONT_DISPLAY, fontSize: 26, color: "#16253C", margin: "4px 0 8px" }}>Benefit Gap Analysis</h1>
       <div style={{ width: 50, height: 2, background: "#C7A356", marginBottom: 16 }} />
 
       {missing.length > 0 && (
@@ -795,8 +795,58 @@ function PlanColumn(props: {
           <Row label="Total balance at retirement" value={fmt$(result.tsp.totalAtRetirement, false)} />
           <Row label="Monthly withdrawal" value={`${fmt$(result.tsp.monthlyWithdrawal, false)}/mo`} />
 
-          <SectionLabel>FEGLI &amp; FEHB</SectionLabel>
-          <Row label="FEGLI Basic at retirement" value={fmt$(result.fegli.currentCoverage.basic, false)} />
+          {/* TSP projected growth — year-by-year balance path (mirrors the PDF). */}
+          {result.tsp.traditionalProjections.length > 0 && (
+            <>
+              <SectionLabel>TSP — PROJECTED GROWTH</SectionLabel>
+              <Highlightable id="tbl:tsp-growth">
+                <DataTable
+                  columns={["Year", "Age", "Traditional", "Roth", "Total"]}
+                  rows={result.tsp.traditionalProjections.slice(0, 30).map((t, i) => {
+                    const rothEnd = result.tsp.rothProjections[i]?.endBalance ?? 0;
+                    return [
+                      String(t.year),
+                      String(t.age),
+                      fmt$(t.endBalance, false),
+                      fmt$(rothEnd, false),
+                      fmt$(t.endBalance + rothEnd, false),
+                    ];
+                  })}
+                />
+              </Highlightable>
+            </>
+          )}
+
+          {/* Life insurance — FEGLI coverage + year-by-year premium cost. */}
+          <SectionLabel>LIFE INSURANCE (FEGLI)</SectionLabel>
+          <Row label="Basic coverage (at retirement)" value={fmt$(result.fegli.currentCoverage.basic, false)} />
+          <Row label="Total coverage" value={fmt$(result.fegli.currentCoverage.total, false)} />
+          <Row label="Current premium" value={`${fmt$(result.fegli.currentMonthlyCost, false)}/mo`} />
+          {result.fegli.costProjections.length > 0 && (() => {
+            let acc = 0;
+            const rows = result.fegli.costProjections.slice(0, 30).map((p) => {
+              acc += p.totalCost;
+              const totalCov = p.basicCoverage + p.optionACoverage + p.optionBCoverage + p.optionCCoverage;
+              return [
+                String(p.age),
+                fmt$(p.basicCoverage, false),
+                fmt$(totalCov, false),
+                fmt$(p.totalCost, false),
+                fmt$(acc, false),
+              ];
+            });
+            return (
+              <Highlightable id="tbl:fegli">
+                <DataTable
+                  columns={["Age", "Basic Cov.", "Total Cov.", "Annual Premium", "Accumulated"]}
+                  rows={rows}
+                />
+              </Highlightable>
+            );
+          })()}
+
+          {/* Health benefits — FEHB premium inputs + year-by-year cost projection. */}
+          <SectionLabel>HEALTH BENEFITS (FEHB)</SectionLabel>
           <EditableRow
             label="FEHB Biweekly Premium"
             display={fmt$(state.FEHB_Biweekly_Premium__c)}
@@ -813,6 +863,30 @@ function PlanColumn(props: {
           />
           <Row label="FEHB monthly (current)" value={`${fmt$(result.fehb.currentMonthlyPremium, false)}/mo`} />
           <Row label="FEHB monthly at retirement" value={`${fmt$(result.fehb.retirementMonthlyPremium, false)}/mo`} />
+          {result.fehb.projections.length > 0 && (() => {
+            let acc = 0;
+            let prev: number | null = null;
+            const rows = result.fehb.projections.slice(0, 30).map((p) => {
+              acc += p.annualPremium;
+              const change = prev == null ? 0 : p.annualPremium - prev;
+              prev = p.annualPremium;
+              return [
+                String(p.age),
+                `${fmt$(p.monthlyPremium, false)}/mo`,
+                fmt$(p.annualPremium, false),
+                fmt$(acc, false),
+                change === 0 ? "—" : change > 0 ? `+${fmt$(change, false)}` : `−${fmt$(Math.abs(change), false)}`,
+              ];
+            });
+            return (
+              <Highlightable id="tbl:fehb">
+                <DataTable
+                  columns={["Age", "Monthly", "Annual", "Accumulated", "Δ vs Prior"]}
+                  rows={rows}
+                />
+              </Highlightable>
+            );
+          })()}
 
           {/* Charts */}
           <ColaChart result={result} />
@@ -1137,6 +1211,54 @@ function Row({ label, value, hid }: { label: string; value: string; hid?: string
     >
       <span style={{ color: "#374151" }}>{label}</span>
       <span style={{ color: "#16253C", fontWeight: 600 }}>{value}</span>
+    </div>
+  );
+}
+
+/**
+ * Read-only data table for multi-year projections (TSP growth, FEGLI, FEHB).
+ * Sticky navy header, zebra rows, scrolls within a bounded box, and never
+ * hyphenates/wraps cells (whiteSpace: nowrap) — the same overflow protection
+ * the PDF needed. First column left-aligned (labels), rest right-aligned (numbers).
+ */
+function DataTable({ columns, rows }: { columns: string[]; rows: string[][] }) {
+  if (rows.length === 0) return null;
+  return (
+    <div style={{
+      overflow: "auto", maxHeight: 320, margin: "2px -8px 8px",
+      border: "1px solid #eef0f3", borderRadius: 4,
+    }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5, hyphens: "none" }}>
+        <thead>
+          <tr>
+            {columns.map((c, i) => (
+              <th key={c} style={{
+                position: "sticky", top: 0, zIndex: 1,
+                textAlign: i === 0 ? "left" : "right",
+                padding: "7px 10px", background: "#16253C", color: "#fff",
+                fontSize: 9.5, letterSpacing: 0.6, fontWeight: 700,
+                textTransform: "uppercase", whiteSpace: "nowrap",
+              }}>{c}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, ri) => (
+            <tr key={ri} style={{ background: ri % 2 ? "#fafbfc" : "#fff" }}>
+              {r.map((cell, ci) => (
+                <td key={ci} style={{
+                  textAlign: ci === 0 ? "left" : "right",
+                  padding: "5px 10px",
+                  color: ci === 0 ? "#374151" : "#16253C",
+                  fontWeight: ci === 0 ? 500 : 600,
+                  borderBottom: "0.5px solid #eef0f3",
+                  whiteSpace: "nowrap",
+                }}>{cell}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
