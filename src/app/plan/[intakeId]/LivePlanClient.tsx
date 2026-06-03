@@ -348,9 +348,9 @@ export default function LivePlanClient({
   return (
    <HighlightCtx.Provider value={highlightApi}>
     <div style={{ minHeight: "100vh", background: "#f0f4fa", fontFamily: FONT_BODY, color: "#0F1A2A" }}>
-      <header style={{ background: "#16253C", color: "#fff", padding: "16px 32px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "3px solid #FDD25E" }}>
+      <header style={{ background: "#16253C", color: "#fff", padding: "16px 32px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "3px solid #C7A356" }}>
         <div>
-          <div style={{ fontFamily: FONT_DISPLAY, fontSize: 22, color: "#FDD25E", letterSpacing: 2 }}>CAPITAL WEALTH</div>
+          <div style={{ fontFamily: FONT_DISPLAY, fontSize: 22, color: "#C7A356", letterSpacing: 2 }}>CAPITAL WEALTH</div>
           <div style={{ fontSize: 11, color: "#cad4e2", letterSpacing: 3 }}>BENEFIT GAP ANALYSIS — LIVE PLAN</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -360,8 +360,8 @@ export default function LivePlanClient({
               title="Toggle highlight mode for presenting"
               style={{
                 padding: "8px 14px", borderRadius: 4, fontSize: 12, fontWeight: 700, cursor: "pointer",
-                border: `1px solid ${highlightMode ? "#FDD25E" : "#3a4a63"}`,
-                background: highlightMode ? "#FDD25E" : "transparent",
+                border: `1px solid ${highlightMode ? "#C7A356" : "#3a4a63"}`,
+                background: highlightMode ? "#C7A356" : "transparent",
                 color: highlightMode ? "#16253C" : "#cad4e2",
               }}
             >
@@ -389,11 +389,11 @@ export default function LivePlanClient({
 
       {/* Mode hint banner — switches with highlight mode */}
       {highlightMode ? (
-        <div style={{ background: "#16253C", borderBottom: "1px solid #FDD25E", padding: "8px 32px", fontSize: 12, color: "#FDD25E", textAlign: "center" }}>
+        <div style={{ background: "#16253C", borderBottom: "1px solid #C7A356", padding: "8px 32px", fontSize: 12, color: "#C7A356", textAlign: "center" }}>
           <strong>🖍 Highlight mode is on.</strong> Click any row, value, tile, or the headline number to highlight it for the client — click again to remove. Editing is locked while highlighting.
         </div>
       ) : (
-        <div style={{ background: "#fef9ee", borderBottom: "1px solid #FDD25E", padding: "8px 32px", fontSize: 12, color: "#374151", textAlign: "center" }}>
+        <div style={{ background: "#fef9ee", borderBottom: "1px solid #C7A356", padding: "8px 32px", fontSize: 12, color: "#374151", textAlign: "center" }}>
           <strong style={{ color: "#16253C" }}>✎ Inline edit is on.</strong> Click any value with a dashed gold underline to edit it directly — numbers update everywhere instantly.
         </div>
       )}
@@ -406,7 +406,7 @@ export default function LivePlanClient({
           <>
             <ScenarioTab label="Plan B" active={active === "B"} onClick={() => setActive("B")} />
             <button onClick={removePlanB} style={miniBtn("#fff", "#DC2626")}>× Remove B</button>
-            {active === "B" && <button onClick={adoptPlanB} style={miniBtn("#FDD25E", "#16253C")}>Adopt B as Plan A</button>}
+            {active === "B" && <button onClick={adoptPlanB} style={miniBtn("#C7A356", "#16253C")}>Adopt B as Plan A</button>}
           </>
         ) : (
           <button onClick={addPlanB} style={miniBtn("#16253C", "#fff")}>+ Add Plan B (Compare)</button>
@@ -451,7 +451,7 @@ export default function LivePlanClient({
             input is reachable down the page (was truncating + clipping fields). */}
         <aside style={{ alignSelf: "start" }}>
           <div style={{ background: "#fff", padding: 20, borderRadius: 4, boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
-            <div style={{ fontSize: 10, color: "#FDD25E", letterSpacing: 3, fontWeight: 600 }}>LIVE EDIT — {active === "A" ? "PLAN A" : "PLAN B"}</div>
+            <div style={{ fontSize: 10, color: "#C7A356", letterSpacing: 3, fontWeight: 600 }}>LIVE EDIT — {active === "A" ? "PLAN A" : "PLAN B"}</div>
             <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: 22, color: "#16253C", margin: "4px 0 16px" }}>Tune the Plan</h2>
 
             <Group title="Client">
@@ -525,7 +525,7 @@ export default function LivePlanClient({
               </>
             )}
             {active === "B" && (
-              <div style={{ marginTop: 16, padding: 10, background: "#fef9ee", border: "1px solid #FDD25E", borderRadius: 4, fontSize: 11, color: "#374151" }}>
+              <div style={{ marginTop: 16, padding: 10, background: "#fef9ee", border: "1px solid #C7A356", borderRadius: 4, fontSize: 11, color: "#374151" }}>
                 Plan B is a what-if scenario. Edit freely — nothing saves to Salesforce until you click <strong>Adopt B as Plan A</strong>.
               </div>
             )}
@@ -543,7 +543,7 @@ export default function LivePlanClient({
           {/* Source documents — view the uploaded LES / SF-50 / TSP / SSA
               statements alongside the report to audit the numbers in real time. */}
           <div style={{ background: "#fff", padding: 20, borderRadius: 4, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", marginTop: 16 }}>
-            <div style={{ fontSize: 10, color: "#FDD25E", letterSpacing: 3, fontWeight: 600 }}>SOURCE DOCUMENTS</div>
+            <div style={{ fontSize: 10, color: "#C7A356", letterSpacing: 3, fontWeight: 600 }}>SOURCE DOCUMENTS</div>
             <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: 20, color: "#16253C", margin: "4px 0 12px" }}>
               Uploaded Documents{docs.length ? ` (${docs.length})` : ""}
             </h2>
@@ -626,11 +626,11 @@ function PlanColumn(props: {
         background: "#fff", padding: 32, borderRadius: 4,
         boxShadow: "0 1px 3px rgba(0,0,0,0.06)", minHeight: 320,
       }}>
-        <div style={{ fontSize: 10, color: "#FDD25E", letterSpacing: 3, fontWeight: 600 }}>CALC ENGINE ERROR</div>
+        <div style={{ fontSize: 10, color: "#C7A356", letterSpacing: 3, fontWeight: 600 }}>CALC ENGINE ERROR</div>
         <h1 style={{ fontFamily: FONT_DISPLAY, fontSize: 26, color: "#16253C", margin: "4px 0 8px" }}>
           The projection couldn&apos;t run
         </h1>
-        <div style={{ width: 50, height: 2, background: "#FDD25E", marginBottom: 16 }} />
+        <div style={{ width: 50, height: 2, background: "#C7A356", marginBottom: 16 }} />
         <p style={{ fontSize: 13, color: "#374151", lineHeight: 1.6 }}>
           Try adjusting an input on the right, or re-parse the uploaded documents.
         </p>
@@ -659,22 +659,22 @@ function PlanColumn(props: {
   return (
     <main style={{
       background: "#fff", padding: 24, borderRadius: 4,
-      boxShadow: highlighted ? "0 0 0 2px #FDD25E, 0 1px 3px rgba(0,0,0,0.06)" : "0 1px 3px rgba(0,0,0,0.06)",
+      boxShadow: highlighted ? "0 0 0 2px #C7A356, 0 1px 3px rgba(0,0,0,0.06)" : "0 1px 3px rgba(0,0,0,0.06)",
       transition: "box-shadow 0.15s",
     }}>
      <ColumnHighlight prefix={label}>
       {isComparison && (
-        <div style={{ fontSize: 10, color: "#FDD25E", letterSpacing: 3, fontWeight: 600, marginBottom: 4 }}>
+        <div style={{ fontSize: 10, color: "#C7A356", letterSpacing: 3, fontWeight: 600, marginBottom: 4 }}>
           {label.toUpperCase()}
         </div>
       )}
-      <div style={{ fontSize: 10, color: "#FDD25E", letterSpacing: 3, fontWeight: 600 }}>YOUR PLAN AT A GLANCE</div>
+      <div style={{ fontSize: 10, color: "#C7A356", letterSpacing: 3, fontWeight: 600 }}>YOUR PLAN AT A GLANCE</div>
       <h1 style={{ fontFamily: FONT_DISPLAY, fontSize: 26, color: "#16253C", margin: "4px 0 8px" }}>Benefit Gap Analysis</h1>
-      <div style={{ width: 50, height: 2, background: "#FDD25E", marginBottom: 16 }} />
+      <div style={{ width: 50, height: 2, background: "#C7A356", marginBottom: 16 }} />
 
       {missing.length > 0 && (
         <div style={{
-          background: "#fef9ee", border: "1px solid #FDD25E", borderLeft: "3px solid #FDD25E",
+          background: "#fef9ee", border: "1px solid #C7A356", borderLeft: "3px solid #C7A356",
           padding: "10px 14px", marginBottom: 14, borderRadius: 4,
           display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12,
         }}>
@@ -705,8 +705,8 @@ function PlanColumn(props: {
 
       {/* Hero */}
       <Highlightable id="hero-annuity" style={{ background: "#16253C", padding: "20px 24px", marginBottom: 14, borderRadius: 4 }}>
-        <div style={{ fontSize: 12, color: "#FDD25E", letterSpacing: 2.5, fontWeight: 600 }}>YOUR MONTHLY ANNUITY AT RETIREMENT</div>
-        <div style={{ fontSize: 52, fontFamily: FONT_DISPLAY, color: "#FDD25E", lineHeight: 1.05, marginTop: 6 }}>
+        <div style={{ fontSize: 12, color: "#C7A356", letterSpacing: 2.5, fontWeight: 600 }}>YOUR MONTHLY ANNUITY AT RETIREMENT</div>
+        <div style={{ fontSize: 52, fontFamily: FONT_DISPLAY, color: "#C7A356", lineHeight: 1.05, marginTop: 6 }}>
           {fmt$(result.annuity.monthlyAnnuity, false)}<span style={{ fontSize: 16 }}>/mo</span>
         </div>
         <div style={{ fontSize: 15, color: "#cad4e2", marginTop: 6 }}>
@@ -1043,7 +1043,7 @@ function primaryBtn(active: boolean): React.CSSProperties {
 function goldBtn(active: boolean): React.CSSProperties {
   return {
     flex: 1, padding: "10px 14px", borderRadius: 4, border: "none",
-    background: active ? "#FDD25E" : "#7b868C",
+    background: active ? "#C7A356" : "#7b868C",
     color: "#16253C", fontWeight: 700, fontSize: 13,
     cursor: active ? "pointer" : "not-allowed",
   };
@@ -1057,7 +1057,7 @@ function Tile({ label, value }: { label: string; value: string }) {
       onClick={hl.mode ? () => hl.toggle(`tile:${label}`) : undefined}
       style={{
         background: on ? HIGHLIGHT_BG : "#fafbfc",
-        borderLeft: "3px solid #FDD25E",
+        borderLeft: "3px solid #C7A356",
         padding: "10px 12px",
         cursor: hl.mode ? "pointer" : undefined,
         boxShadow: on ? `inset 0 0 0 1px ${HIGHLIGHT_RING}` : undefined,
@@ -1097,7 +1097,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
     <div style={{
       fontSize: 14, fontWeight: 700, color: "#16253C", letterSpacing: 1.2,
       textTransform: "uppercase", marginTop: 24, marginBottom: 8,
-      paddingBottom: 4, borderBottom: "2px solid #FDD25E",
+      paddingBottom: 4, borderBottom: "2px solid #C7A356",
       display: "inline-block", paddingRight: 12,
     }}>{children}</div>
   );
@@ -1197,18 +1197,19 @@ function EditableRow({
             color: "#16253C",
             fontWeight: 700,
             cursor: "pointer",
-            // Confirmable client-provided details render as a persistent soft-gold
-            // field — so on a shared Zoom screen it's obvious which values are
-            // "verify with the client" (vs. computed numbers) and they read clearly.
-            background: hl.mode ? undefined : (hover ? "#FBEEC4" : "#FEF8E8"),
-            border: hl.mode ? undefined : "1px solid #EBCB73",
+            // Confirmable client-provided details render as a clean, restrained
+            // field (neutral fill + thin gold left-edge) so it's clearly a
+            // "verify with the client" value — distinct but not a bright highlight.
+            background: hl.mode ? undefined : (hover ? "#EEF1F5" : "#F7F8FA"),
+            border: hl.mode ? undefined : "1px solid #DCE0E6",
+            borderLeft: hl.mode ? undefined : "2px solid #C7A356",
             borderRadius: 4,
             padding: hl.mode ? undefined : "1px 8px",
             transition: "all 0.12s",
           }}
         >
           {display}
-          {!hl.mode && <span style={{ marginLeft: 6, fontSize: 10, color: "#B8860B", opacity: hover ? 1 : 0.6 }}>✎</span>}
+          {!hl.mode && <span style={{ marginLeft: 6, fontSize: 10, color: "#C7A356", opacity: hover ? 0.9 : 0.45 }}>✎</span>}
         </span>
       )}
     </div>
@@ -1221,7 +1222,7 @@ const inlineInputStyle: React.CSSProperties = {
   color: "#16253C",
   textAlign: "right",
   padding: "2px 6px",
-  border: "1px solid #FDD25E",
+  border: "1px solid #C7A356",
   borderRadius: 3,
   background: "#fef9ee",
   fontFamily: FONT_BODY,
@@ -1303,7 +1304,7 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
     <div style={{ marginBottom: 14 }}>
       <div style={{
         fontSize: 12, color: "#16253C", letterSpacing: 1.2, fontWeight: 700,
-        textTransform: "uppercase", marginBottom: 6, paddingBottom: 2, borderBottom: "1px solid #FDD25E",
+        textTransform: "uppercase", marginBottom: 6, paddingBottom: 2, borderBottom: "1px solid #C7A356",
         display: "inline-block", paddingRight: 12,
       }}>{title}</div>
       <div style={{ display: "grid", gap: 6 }}>{children}</div>
