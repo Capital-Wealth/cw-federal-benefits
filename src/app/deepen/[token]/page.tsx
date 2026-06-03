@@ -28,6 +28,8 @@ interface AddressValue {
 
 type FieldValue = string | AddressValue;
 
+const LOGO_URL = "https://www.capitalwealth.com/assets/images/logos/logo-icon-white.png";
+
 export default function DeepenIntakePage({ params }: { params: Promise<{ token: string }> }) {
   const [token, setToken] = useState("");
   const [state, setState] = useState<"loading" | "ready" | "submitting" | "done" | "error" | "already">("loading");
@@ -59,7 +61,6 @@ export default function DeepenIntakePage({ params }: { params: Promise<{ token: 
         setSession(data);
         setState("ready");
 
-        // Mark Opened (fire-and-forget)
         if (!openMarkedRef.current) {
           openMarkedRef.current = true;
           fetch("/api/deepen/open", {
@@ -113,55 +114,69 @@ export default function DeepenIntakePage({ params }: { params: Promise<{ token: 
     }
   }, [token, values]);
 
-  const greeting = useMemo(() => {
-    if (!session?.firstName) return "Hello";
-    return `Hi, ${session.firstName}`;
-  }, [session?.firstName]);
+  const firstName = session?.firstName?.trim() || "";
 
   if (state === "loading") {
-    return <Shell>Loading your form...</Shell>;
+    return (
+      <BrandedShell firstName={firstName}>
+        <div className="text-center py-12 text-zinc-500">Loading your form…</div>
+      </BrandedShell>
+    );
   }
 
   if (state === "error") {
     return (
-      <Shell>
-        <h1>We hit a snag</h1>
-        <p>{error || "Your link may have expired or already been used."}</p>
-        <p>Please reach out to your Capital Wealth advisor — we will send a fresh link.</p>
-      </Shell>
+      <BrandedShell firstName={firstName}>
+        <div className="text-center py-6">
+          <h2 className="text-xl font-semibold text-zinc-800 mb-2">We hit a snag.</h2>
+          <p className="text-zinc-600 text-base mb-1">{error || "Your link may have expired or already been used."}</p>
+          <p className="text-zinc-500 text-sm">Reply to your advisor email and we&apos;ll send a fresh link.</p>
+        </div>
+      </BrandedShell>
     );
   }
 
   if (state === "already") {
     return (
-      <Shell>
-        <h1>{greeting} — we already have what we need.</h1>
-        <p>Thanks for submitting your details. See you at your next meeting.</p>
-      </Shell>
+      <BrandedShell firstName={firstName}>
+        <div className="text-center py-6">
+          <h2 className="text-xl font-semibold text-zinc-800 mb-2">
+            {firstName ? `Thanks, ${firstName}.` : "Thanks."}
+          </h2>
+          <p className="text-zinc-600 text-base">We already have what we need. See you at your next meeting.</p>
+        </div>
+      </BrandedShell>
     );
   }
 
   if (state === "done") {
     return (
-      <Shell>
-        <h1>Thanks, {session?.firstName || "there"}.</h1>
-        <p>Your answers are saved. We will put them to work before our next meeting.</p>
-      </Shell>
+      <BrandedShell firstName={firstName}>
+        <div className="text-center py-6">
+          <h2 className="text-xl font-semibold text-zinc-800 mb-2">
+            {firstName ? `Thanks, ${firstName}.` : "Thanks."}
+          </h2>
+          <p className="text-zinc-600 text-base">Your answers are saved. We&apos;ll put them to work before our next meeting.</p>
+        </div>
+      </BrandedShell>
     );
   }
 
   const fields = session?.fields || [];
 
   return (
-    <Shell>
-      <h1>{greeting} — a few quick details</h1>
-      <p style={{ marginBottom: "1.5rem" }}>
-        We just need a few more details so we can make the most of our time together.
-        Leave any field blank if you would rather answer it in person.
+    <BrandedShell firstName={firstName}>
+      <p className="text-zinc-700 text-base sm:text-lg mb-1 text-center font-semibold">
+        {firstName ? `Hi ${firstName} — a few quick details.` : "A few quick details."}
+      </p>
+      <p className="text-zinc-500 text-sm sm:text-base mb-8 text-center text-balance">
+        These help your advisor prepare. Skip anything you&apos;d rather answer in person.
       </p>
 
       {fields.length === 0 ? (
-        <p>Looks like we already have everything. You can close this page.</p>
+        <p className="text-zinc-500 text-center py-4">
+          Looks like we already have everything. You can close this page.
+        </p>
       ) : (
         <form
           onSubmit={(e) => {
@@ -180,50 +195,67 @@ export default function DeepenIntakePage({ params }: { params: Promise<{ token: 
           ))}
 
           {error && (
-            <div style={{ color: "#c0392b", margin: "1rem 0" }}>{error}</div>
+            <div className="mb-4 rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
+              {error}
+            </div>
           )}
 
-          <button
-            type="submit"
-            disabled={state === "submitting"}
-            style={{
-              background: "#0a4d8c",
-              color: "white",
-              padding: "0.75rem 1.5rem",
-              border: "none",
-              borderRadius: "4px",
-              fontSize: "1rem",
-              cursor: "pointer",
-              marginTop: "1rem",
-            }}
-          >
-            {state === "submitting" ? "Saving..." : "Submit"}
-          </button>
+          <div className="mt-2 text-center sm:text-left">
+            <button
+              type="submit"
+              disabled={state === "submitting"}
+              className="w-full sm:w-auto inline-block bg-[#16253C] text-white font-bold tracking-wider text-sm uppercase px-8 py-3.5 rounded-lg hover:bg-[#1f3554] disabled:opacity-60 transition-colors"
+            >
+              {state === "submitting" ? "Saving…" : "Submit my details"}
+            </button>
+          </div>
         </form>
       )}
-    </Shell>
+    </BrandedShell>
   );
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
+function BrandedShell({ firstName: _firstName, children }: { firstName?: string; children: React.ReactNode }) {
+  // firstName reserved for future personalization in the hero (currently unused there)
+  void _firstName;
   return (
-    <main
-      style={{
-        maxWidth: "640px",
-        margin: "0 auto",
-        padding: "2rem 1rem",
-        fontFamily: "system-ui, -apple-system, sans-serif",
-        lineHeight: 1.5,
-        color: "#111",
-        background: "#fff",
-        colorScheme: "light",
-        fontSize: "1.0625rem",
-      }}
-    >
-      {children}
+    <main className="min-h-screen bg-[#f4f4f4] py-8 px-4" style={{ colorScheme: "light" }}>
+      <div className="max-w-2xl mx-auto bg-white rounded-xl overflow-hidden shadow-sm">
+        <div className="bg-[#16253C] text-white px-6 sm:px-8 py-10 text-center border-b-[3px] border-[#C7A356]">
+          <img
+            src={LOGO_URL}
+            alt="Capital Wealth"
+            width={44}
+            height={34}
+            className="block mx-auto mb-2"
+            style={{ width: 44, height: "auto", border: 0 }}
+          />
+          <div className="text-[#C7A356] text-xs font-bold tracking-[0.2em] mb-3">CAPITAL WEALTH</div>
+          <h1 className="font-serif text-2xl sm:text-3xl font-normal tracking-wide text-balance">TELL US ABOUT YOU</h1>
+          <p className="text-[#C7A356] text-sm sm:text-base font-semibold mt-2 text-balance">
+            YOUR STORY SHAPES YOUR RETIREMENT
+          </p>
+        </div>
+
+        <div className="px-5 sm:px-10 py-8 text-zinc-900">{children}</div>
+
+        <div className="bg-zinc-50 border-t border-zinc-200 px-6 py-5 text-center">
+          <p className="text-zinc-500 text-xs">
+            Capital Wealth · 1850 Ashton Blvd., Suite 175, Lehi, UT 84043 · 801.210.2800
+          </p>
+          <p className="text-zinc-400 text-[11px] mt-2">
+            Advisory services offered through Capital Wealth, LLC, a State of Utah Registered Investment Advisor.
+          </p>
+        </div>
+      </div>
     </main>
   );
 }
+
+const LABEL_CLASS = "block text-sm font-semibold text-zinc-700 mb-1.5";
+const INPUT_CLASS =
+  "w-full rounded-lg border border-zinc-300 px-3.5 py-2.5 text-base text-zinc-900 bg-white placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-[#C7A356]/40 focus:border-[#16253C]";
+const ROW_CLASS = "mb-6";
 
 function FieldRow({
   descriptor,
@@ -236,55 +268,46 @@ function FieldRow({
   onChange: (v: FieldValue) => void;
   onSkip: () => void;
 }) {
-  const labelStyle: React.CSSProperties = { display: "block", fontWeight: 600, marginBottom: "0.25rem" };
-  const inputStyle: React.CSSProperties = {
-    width: "100%",
-    padding: "0.625rem 0.75rem",
-    border: "1px solid #bbb",
-    borderRadius: "4px",
-    fontSize: "1.0625rem",
-    color: "#111",
-    background: "#fff",
-    colorScheme: "light",
-  };
-  const rowStyle: React.CSSProperties = { marginBottom: "1.25rem" };
-
   const strVal = typeof value === "string" ? value : "";
 
   if (descriptor.type === "address") {
     const addr: AddressValue =
       value && typeof value === "object" ? value : { street: "", city: "", state: "", postalCode: "" };
     return (
-      <div style={rowStyle}>
-        <label style={labelStyle}>{descriptor.label}</label>
+      <div className={ROW_CLASS}>
+        <label className={LABEL_CLASS}>{descriptor.label}</label>
         <input
           type="text"
           placeholder="Street"
-          style={{ ...inputStyle, marginBottom: "0.5rem" }}
+          className={`${INPUT_CLASS} mb-2`}
           value={addr.street}
           onChange={(e) => onChange({ ...addr, street: e.target.value })}
+          autoComplete="street-address"
         />
-        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: "0.5rem" }}>
+        <div className="grid grid-cols-1 sm:grid-cols-[2fr_1fr_1fr] gap-2">
           <input
             type="text"
             placeholder="City"
-            style={inputStyle}
+            className={INPUT_CLASS}
             value={addr.city}
             onChange={(e) => onChange({ ...addr, city: e.target.value })}
+            autoComplete="address-level2"
           />
           <input
             type="text"
             placeholder="State"
-            style={inputStyle}
+            className={INPUT_CLASS}
             value={addr.state}
             onChange={(e) => onChange({ ...addr, state: e.target.value })}
+            autoComplete="address-level1"
           />
           <input
             type="text"
             placeholder="ZIP"
-            style={inputStyle}
+            className={INPUT_CLASS}
             value={addr.postalCode}
             onChange={(e) => onChange({ ...addr, postalCode: e.target.value })}
+            autoComplete="postal-code"
           />
         </div>
         <SkipLink onSkip={onSkip} />
@@ -294,9 +317,9 @@ function FieldRow({
 
   if (descriptor.type === "picklist") {
     return (
-      <div style={rowStyle}>
-        <label style={labelStyle}>{descriptor.label}</label>
-        <select style={inputStyle} value={strVal} onChange={(e) => onChange(e.target.value)}>
+      <div className={ROW_CLASS}>
+        <label className={LABEL_CLASS}>{descriptor.label}</label>
+        <select className={INPUT_CLASS} value={strVal} onChange={(e) => onChange(e.target.value)}>
           <option value="">— Select —</option>
           {(descriptor.picklistValues || []).map((v) => (
             <option key={v} value={v}>
@@ -311,10 +334,10 @@ function FieldRow({
 
   if (descriptor.type === "textarea") {
     return (
-      <div style={rowStyle}>
-        <label style={labelStyle}>{descriptor.label}</label>
+      <div className={ROW_CLASS}>
+        <label className={LABEL_CLASS}>{descriptor.label}</label>
         <textarea
-          style={{ ...inputStyle, minHeight: "80px" }}
+          className={`${INPUT_CLASS} min-h-[88px] resize-y`}
           value={strVal}
           onChange={(e) => onChange(e.target.value)}
         />
@@ -333,11 +356,11 @@ function FieldRow({
       : "text";
 
   return (
-    <div style={rowStyle}>
-      <label style={labelStyle}>{descriptor.label}</label>
+    <div className={ROW_CLASS}>
+      <label className={LABEL_CLASS}>{descriptor.label}</label>
       <input
         type={htmlType}
-        style={inputStyle}
+        className={INPUT_CLASS}
         value={strVal}
         onChange={(e) => onChange(e.target.value)}
       />
@@ -351,16 +374,9 @@ function SkipLink({ onSkip }: { onSkip: () => void }) {
     <button
       type="button"
       onClick={onSkip}
-      style={{
-        background: "none",
-        border: "none",
-        color: "#0a4d8c",
-        fontSize: "0.85rem",
-        cursor: "pointer",
-        padding: "0.25rem 0",
-      }}
+      className="text-zinc-400 hover:text-[#16253C] text-xs underline underline-offset-2 mt-1.5"
     >
-      I'd rather answer this in person
+      Skip this — I&apos;ll share in person
     </button>
   );
 }
