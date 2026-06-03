@@ -68,10 +68,19 @@ export function verifyLivePlanToken(token: string): LivePlanSession {
 
   // Expiry is enforced only when present (legacy short-lived tokens). A stateless
   // permanent token omits exp and therefore never expires.
+  //
+  // The Apex button still mints exp ~60 min out, which kicked advisors out of an
+  // active Live Plan (forcing a re-open from Salesforce for a NEW link) the
+  // moment they saved after the hour. The token is HMAC-signed (unforgeable) and
+  // scoped to a single intake, so for this internal advisor tool we honor a long
+  // grace window past the minted exp — the SAME link keeps working across a full
+  // working session/week, so the link never has to change and Ann isn't kicked
+  // out mid-edit.
+  const GRACE_SECONDS = 60 * 60 * 24 * 30; // 30 days
   if (payload.exp != null) {
     const nowSec = Math.floor(Date.now() / 1000); // epoch SECONDS, matching Apex
-    if (payload.exp < nowSec) {
-      throw new Error("Token expired — re-open Live Plan from Salesforce");
+    if (payload.exp + GRACE_SECONDS < nowSec) {
+      throw new Error("Live Plan link expired — re-open from Salesforce");
     }
   }
 

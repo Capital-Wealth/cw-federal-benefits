@@ -83,6 +83,7 @@ For "currentAnnualSalary", you MUST sum ALL line items where creditableForHigh3=
 Extract these fields exactly. Return ONLY a JSON object with these keys (use null for any field not found):
 
 {
+  "dateOfBirth": "YYYY-MM-DD" (employee date of birth, if shown),
   "serviceComputationDate": "YYYY-MM-DD" (SCD for retirement, Block 31),
   "retirementSystem": "FERS" | "CSRS" | "xFERS" (retirement plan code in Block 30),
   "employeeType": "Regular" | "Other",
@@ -129,6 +130,7 @@ Extract these fields exactly. Return ONLY a JSON object with these keys (use nul
 Extract these fields exactly. Return ONLY a JSON object with these keys (use null for any field not found):
 
 {
+  "dateOfBirth": "YYYY-MM-DD" (employee date of birth, if shown),
   "fegliBasic": boolean (has basic FEGLI coverage),
   "fegliOptionA": boolean (has Option A),
   "fegliOptionB": boolean (has Option B),
@@ -147,6 +149,7 @@ Extract these fields exactly. Return ONLY a JSON object with these keys (use nul
 Extract these fields exactly. Return ONLY a JSON object with these keys (use null for any field not found):
 
 {
+  "dateOfBirth": "YYYY-MM-DD" (the date of birth printed on the Social Security statement),
   "ssFersMonthlyBenefit": number (estimated monthly benefit at age 62),
   "ssFersStartAge": 62,
   "ssCsrsMonthlyBenefit": number (same value — used for CSRS offset calc too),
