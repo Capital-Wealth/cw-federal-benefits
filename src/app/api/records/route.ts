@@ -41,10 +41,31 @@ export async function GET(request: NextRequest) {
       return Response.json({ error: "Record not found" }, { status: 404 });
     }
 
+    // Vault overrides (advisor saves in the Live View) win over Salesforce and
+    // fill gaps the integration user can't read via FLS (client name, DOB).
+    let vaultName: string | null = null;
+    try {
+      const { createServiceClient } = await import("@/lib/supabase/client");
+      const supabase = createServiceClient();
+      const { data: vault } = await supabase
+        .from("intake_data")
+        .select("data, date_of_birth, client_name")
+        .eq("intake_id", recordId)
+        .maybeSingle();
+      if (vault) {
+        const vd = ((vault.data as Record<string, unknown>) || {});
+        Object.assign(record as Record<string, unknown>, vd);
+        if (vault.date_of_birth) (record as Record<string, unknown>).Date_of_Birth__c = vault.date_of_birth;
+        vaultName = (vault.client_name as string) || (vd._clientName as string) || null;
+      }
+    } catch {
+      /* Vault optional — fall back to Salesforce */
+    }
+
     // Get name + DOB + state from the linked Contact/Lead. DOB lives on Contact
     // (not on FBI — that field doesn't exist on the FBI object), and state of
     // residence comes from the Contact's mailing address.
-    let clientName: string | null = null;
+    let clientName: string | null = vaultName;
     // Prefer the FBI's own Date_of_Birth__c (set by the Live Plan inline editor,
     // readable by the integration user) over the Contact's Birthdate.
     let dateOfBirth: string | null = (record.Date_of_Birth__c as string) ?? null;

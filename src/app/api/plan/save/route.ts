@@ -1,17 +1,19 @@
 import { NextRequest } from "next/server";
 import { verifyLivePlanToken } from "@/lib/plan/token";
 import { getSFConnection } from "@/lib/salesforce/connector";
+import { createServiceClient } from "@/lib/supabase/client";
 import { SF_CONFIG } from "@/config";
 
 /**
  * POST /api/plan/save
  *
- * Body:
- *   token                short-lived HMAC token (from ?session=)
- *   intakeId             Federal_Benefits_Intake__c.Id
- *   state                full editable state (used to PATCH the FBI)
- *   changes              [{ field, oldValue, newValue }]  — used for the audit log
- *   computedAnnualAnnuity  number  — recomputed at save time, stored on each Plan_Change__c
+ * Persistence model: the Vault (Supabase `intake_data`) is AUTHORITATIVE — it
+ * has no Salesforce field-level-security limits, so advisor overrides always
+ * stick. Salesforce is written BEST-EFFORT: if the integration user lacks write
+ * FLS on a field, that write fails silently and the save still succeeds via the
+ * Vault. The calc/PDF and the Live Plan read the Vault overrides back.
+ *
+ * Body: token, intakeId, state, changes, computedAnnualAnnuity, dateOfBirth?, address?
  */
 export async function POST(request: NextRequest) {
   let body: {
@@ -33,78 +35,95 @@ export async function POST(request: NextRequest) {
   try {
     session = verifyLivePlanToken(body.token);
   } catch (e) {
-    return Response.json(
-      { error: e instanceof Error ? e.message : "auth failed" },
-      { status: 401 },
-    );
+    return Response.json({ error: e instanceof Error ? e.message : "auth failed" }, { status: 401 });
   }
   if (session.intakeId !== body.intakeId) {
     return Response.json({ error: "intakeId / token mismatch" }, { status: 403 });
   }
 
-  const conn = await getSFConnection();
-
-  // Build the SF update — only ship fields the editor controls.
-  const update: Record<string, unknown> = { Id: body.intakeId };
-  for (const f of EDITABLE_FIELDS) {
-    if (f in body.state) update[f] = body.state[f];
-  }
-  // Date of Birth is editable inline. Persist it to the FBI's own
-  // Date_of_Birth__c (the field the integration user can read/write — avoids
-  // the Contact FLS gap) so it round-trips and the report can compute age.
-  if (body.dateOfBirth !== undefined) {
-    update.Date_of_Birth__c = body.dateOfBirth || null;
-  }
-
+  // ---- 1) Vault (authoritative) — merge onto any existing override row ----
+  let vaultSaved = false;
+  let vaultError: string | null = null;
   try {
-    await conn.sobject(SF_CONFIG.objectName).update(update as { Id: string });
+    const supabase = createServiceClient();
+    const { data: existing } = await supabase
+      .from("intake_data")
+      .select("data")
+      .eq("intake_id", body.intakeId)
+      .maybeSingle();
+    const prev = ((existing?.data as Record<string, unknown>) || {});
+    const merged: Record<string, unknown> = { ...prev };
+    for (const f of EDITABLE_FIELDS) {
+      if (f in body.state) merged[f] = body.state[f];
+    }
+    if (body.dateOfBirth !== undefined) merged.Date_of_Birth__c = body.dateOfBirth || null;
+    if (body.address !== undefined) merged._address = body.address || null;
+
+    const row: Record<string, unknown> = {
+      intake_id: body.intakeId,
+      data: merged,
+      updated_at: new Date().toISOString(),
+    };
+    if (body.dateOfBirth !== undefined) row.date_of_birth = body.dateOfBirth || null;
+    if (body.address !== undefined) row.mailing_address = body.address || null;
+
+    const { error } = await supabase.from("intake_data").upsert(row, { onConflict: "intake_id" });
+    if (error) vaultError = error.message;
+    else vaultSaved = true;
   } catch (e) {
-    return Response.json(
-      { error: "SF update failed: " + (e instanceof Error ? e.message : String(e)) },
-      { status: 500 },
-    );
+    vaultError = e instanceof Error ? e.message : String(e);
   }
 
-  // Mailing address is cosmetic (report cover only). Write it to the linked
-  // Contact best-effort — never fail the save if the Contact isn't reachable.
-  if (body.address !== undefined && body.address) {
-    try {
-      const rec = (await conn
-        .sobject(SF_CONFIG.objectName)
-        .retrieve(body.intakeId)) as { Contact__c?: string };
-      if (rec.Contact__c) {
-        await conn.sobject("Contact").update({ Id: rec.Contact__c, MailingStreet: body.address });
-      }
-    } catch {
-      /* non-fatal — address has no calc impact */
+  // ---- 2) Salesforce (best-effort — never fails the save) ----
+  let sfSynced = false;
+  let sfError: string | null = null;
+  try {
+    const conn = await getSFConnection();
+    const update: Record<string, unknown> = { Id: body.intakeId };
+    for (const f of EDITABLE_FIELDS) {
+      if (f in body.state) update[f] = body.state[f];
     }
-  }
+    if (body.dateOfBirth !== undefined) update.Date_of_Birth__c = body.dateOfBirth || null;
+    await conn.sobject(SF_CONFIG.objectName).update(update as { Id: string });
+    sfSynced = true;
 
-  // Insert change-history rows — one per changed field.
-  if (body.changes && body.changes.length > 0) {
-    const now = new Date().toISOString();
-    const rows = body.changes.map((c) => ({
-      Intake__c: body.intakeId,
-      Field_Api_Name__c: c.field,
-      Old_Value__c: c.oldValue == null ? null : String(c.oldValue).slice(0, 255),
-      New_Value__c: c.newValue == null ? null : String(c.newValue).slice(0, 255),
-      Edited_By__c: session.userId ?? null, // null with a stateless (no-user) token; nillable User lookup
-      Edited_At__c: now,
-      Computed_Annual_Annuity__c: body.computedAnnualAnnuity,
-      Source__c: "Live Plan",
-    }));
-    try {
-      await conn.sobject("Federal_Benefits_Plan_Change__c").create(rows);
-    } catch (e) {
-      // Non-fatal — the FBI update already succeeded
-      console.error("Plan change log insert failed:", e);
+    // Mailing address → Contact (best-effort)
+    if (body.address) {
+      try {
+        const rec = (await conn.sobject(SF_CONFIG.objectName).retrieve(body.intakeId)) as { Contact__c?: string };
+        if (rec.Contact__c) await conn.sobject("Contact").update({ Id: rec.Contact__c, MailingStreet: body.address });
+      } catch { /* non-fatal */ }
     }
+
+    // Change-history log
+    if (body.changes && body.changes.length > 0) {
+      const now = new Date().toISOString();
+      const rows = body.changes.map((c) => ({
+        Intake__c: body.intakeId,
+        Field_Api_Name__c: c.field,
+        Old_Value__c: c.oldValue == null ? null : String(c.oldValue).slice(0, 255),
+        New_Value__c: c.newValue == null ? null : String(c.newValue).slice(0, 255),
+        Edited_By__c: session.userId ?? null,
+        Edited_At__c: now,
+        Computed_Annual_Annuity__c: body.computedAnnualAnnuity,
+        Source__c: "Live Plan",
+      }));
+      try { await conn.sobject("Federal_Benefits_Plan_Change__c").create(rows); } catch { /* non-fatal */ }
+    }
+  } catch (e) {
+    sfError = e instanceof Error ? e.message : String(e);
   }
 
+  if (!vaultSaved) {
+    return Response.json({ error: "Save failed (vault): " + vaultError }, { status: 500 });
+  }
   return Response.json({
     success: true,
     savedAt: new Date().toISOString(),
     changes: body.changes?.length ?? 0,
+    vaultSaved,
+    sfSynced,
+    sfError, // surfaced for visibility; SF sync is best-effort until write FLS is granted
   });
 }
 

@@ -9,6 +9,7 @@
 import { notFound } from "next/navigation";
 import { verifyLivePlanToken } from "@/lib/plan/token";
 import { getSFConnection } from "@/lib/salesforce/connector";
+import { createServiceClient } from "@/lib/supabase/client";
 import { SF_CONFIG } from "@/config";
 import LivePlanClient from "./LivePlanClient";
 
@@ -43,6 +44,29 @@ async function loadIntake(intakeId: string) {
       const cityStateZip = [city, state].filter(Boolean).join(", ") + (zip ? ` ${zip}` : "");
       address = [street, cityStateZip].filter((s) => s.trim()).join(", ") || null;
     }
+  }
+
+  // Vault overrides (advisor saves persist here — no Salesforce FLS limits).
+  // These win over Salesforce so live edits show up at the same link.
+  try {
+    const supabase = createServiceClient();
+    const { data: vault } = await supabase
+      .from("intake_data")
+      .select("data, date_of_birth, mailing_address, client_name")
+      .eq("intake_id", intakeId)
+      .maybeSingle();
+    if (vault) {
+      const vd = ((vault.data as Record<string, unknown>) || {});
+      Object.assign(record as Record<string, unknown>, vd); // SF-keyed overrides (incl. Date_of_Birth__c)
+      const vDob = (vault.date_of_birth as string) || (vd.Date_of_Birth__c as string);
+      if (vDob) dateOfBirth = vDob;
+      const vAddr = (vault.mailing_address as string) || (vd._address as string);
+      if (vAddr) address = vAddr;
+      const vName = (vault.client_name as string) || (vd._clientName as string);
+      if (vName) clientName = vName;
+    }
+  } catch {
+    /* Vault is optional — fall back to Salesforce values */
   }
 
   return { record, clientName, dateOfBirth, address, contactId: (record.Contact__c as string) ?? null };

@@ -611,7 +611,9 @@ function PlanColumn(props: {
   if (!dateOfBirth) missing.push("Date of Birth");
   if (!state.Current_Annual_Salary__c) missing.push("Current Annual Salary");
   if (!state.Retirement_System__c) missing.push("Retirement System (FERS/CSRS)");
-  if (!address) missing.push("Mailing Address (on Contact)");
+  // Mailing Address is intentionally NOT flagged here — it's cosmetic (report
+  // cover only, zero numeric impact). It's still editable in the right-hand
+  // "Client" group; it just shouldn't trigger the "numbers reflect zeros" banner.
   // Planned Retirement Date is intentionally omitted — buildReportInput
   // auto-defaults it to DOB + 57 (FERS MRA / LEO mandatory retirement age)
   // so the advisor can override on the right panel if needed.
@@ -703,7 +705,7 @@ function PlanColumn(props: {
 
       {/* Hero */}
       <Highlightable id="hero-annuity" style={{ background: "#16253C", padding: "20px 24px", marginBottom: 14, borderRadius: 4 }}>
-        <div style={{ fontSize: 9, color: "#FDD25E", letterSpacing: 2.5, fontWeight: 600 }}>YOUR MONTHLY ANNUITY AT RETIREMENT</div>
+        <div style={{ fontSize: 9, color: "#C7A356", letterSpacing: 2.5, fontWeight: 600 }}>YOUR MONTHLY ANNUITY AT RETIREMENT</div>
         <div style={{ fontSize: 36, fontFamily: FONT_DISPLAY, color: "#C7A356", lineHeight: 1.05, marginTop: 6 }}>
           {fmt$(result.annuity.monthlyAnnuity, false)}<span style={{ fontSize: 16 }}>/mo</span>
         </div>
@@ -751,42 +753,29 @@ function PlanColumn(props: {
         );
       })()}
 
-      {/* Survivor — election is inline-editable */}
-      <SectionLabel>SURVIVOR — {state.Survivor_Benefit_FERS__c}</SectionLabel>
-      <EditableRow
-        label="Survivor election"
-        display={state.Survivor_Benefit_FERS__c}
-        value={state.Survivor_Benefit_FERS__c}
-        type="select"
-        options={[{ label: "None", value: "0%" }, { label: "25%", value: "25%" }, { label: "50%", value: "50%" }]}
-        onCommit={(v) => onUpdate("Survivor_Benefit_FERS__c", String(v))}
-      />
-      <Row label="Annuity (no survivor)" value={`${fmt$(result.annuity.monthlyAnnuity, false)}/mo`} />
-      <Row label="Annuity (with survivor)" value={`${fmt$((result.annuity.annualAnnuity - result.survivorBenefit.annualCost) / 12, false)}/mo`} />
-      <Row label="Spouse benefit" value={`${fmt$(result.survivorBenefit.survivorMonthlyBenefit, false)}/mo`} />
-      <Row label="Survivor cost" value={`${fmt$(result.survivorBenefit.monthlyCost, false)}/mo`} />
+      {/* Survivor — only shown when an election is made. Hidden for single
+          clients (election 0%), matching how Ann skips it in those meetings.
+          The election is still changeable via the right-hand input panel. */}
+      {state.Survivor_Benefit_FERS__c !== "0%" && (
+        <>
+          <SectionLabel>SURVIVOR — {state.Survivor_Benefit_FERS__c}</SectionLabel>
+          <EditableRow
+            label="Survivor election"
+            display={state.Survivor_Benefit_FERS__c}
+            value={state.Survivor_Benefit_FERS__c}
+            type="select"
+            options={[{ label: "None", value: "0%" }, { label: "25%", value: "25%" }, { label: "50%", value: "50%" }]}
+            onCommit={(v) => onUpdate("Survivor_Benefit_FERS__c", String(v))}
+          />
+          <Row label="Annuity (no survivor)" value={`${fmt$(result.annuity.monthlyAnnuity, false)}/mo`} />
+          <Row label="Annuity (with survivor)" value={`${fmt$((result.annuity.annualAnnuity - result.survivorBenefit.annualCost) / 12, false)}/mo`} />
+          <Row label="Spouse benefit" value={`${fmt$(result.survivorBenefit.survivorMonthlyBenefit, false)}/mo`} />
+          <Row label="Survivor cost" value={`${fmt$(result.survivorBenefit.monthlyCost, false)}/mo`} />
+        </>
+      )}
 
       {!isComparison && (
         <>
-          <SectionLabel>FERS SUPPLEMENT &amp; SOCIAL SECURITY</SectionLabel>
-          <Row label="FERS Supplement (monthly)" value={result.fersSupplement.eligible ? fmt$(result.fersSupplement.monthlyAmount, false) : "Not eligible"} />
-          <EditableRow
-            label="SS Monthly Benefit (input)"
-            display={fmt$(state.SS_FERS_Monthly_Benefit__c, false)}
-            value={state.SS_FERS_Monthly_Benefit__c}
-            step={10}
-            onCommit={(v) => onUpdate("SS_FERS_Monthly_Benefit__c", Number(v))}
-          />
-          <EditableRow
-            label="SS Start Age"
-            display={String(state.SS_FERS_Start_Age__c)}
-            value={state.SS_FERS_Start_Age__c}
-            step={1}
-            onCommit={(v) => onUpdate("SS_FERS_Start_Age__c", Number(v))}
-          />
-          <Row label="SS at start age (computed)" value={fmt$(result.socialSecurity.monthlyBenefitAtStartAge, false)} />
-          <Row label="SS Full Retirement Age" value={String(result.socialSecurity.fullRetirementAge)} />
-
           <SectionLabel>TSP — TRADITIONAL</SectionLabel>
           <EditableRow hid="trad-G" label="G Fund balance" display={fmt$(state.TSP_Trad_G_Balance__c, false)} value={state.TSP_Trad_G_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Trad_G_Balance__c", Number(v))} />
           <EditableRow hid="trad-F" label="F Fund balance" display={fmt$(state.TSP_Trad_F_Balance__c, false)} value={state.TSP_Trad_F_Balance__c} step={100} onCommit={(v) => onUpdate("TSP_Trad_F_Balance__c", Number(v))} />
@@ -904,6 +893,27 @@ function PlanColumn(props: {
               </Highlightable>
             );
           })()}
+
+          {/* FERS Supplement + Social Security — placed AFTER TSP/FEGLI/FEHB to
+              match how Ann presents (pension → TSP → insurance → SS last). */}
+          <SectionLabel>FERS SUPPLEMENT &amp; SOCIAL SECURITY</SectionLabel>
+          <Row label="FERS Supplement (monthly)" value={result.fersSupplement.eligible ? fmt$(result.fersSupplement.monthlyAmount, false) : "Not eligible"} />
+          <EditableRow
+            label="SS Monthly Benefit (input)"
+            display={fmt$(state.SS_FERS_Monthly_Benefit__c, false)}
+            value={state.SS_FERS_Monthly_Benefit__c}
+            step={10}
+            onCommit={(v) => onUpdate("SS_FERS_Monthly_Benefit__c", Number(v))}
+          />
+          <EditableRow
+            label="SS Start Age"
+            display={String(state.SS_FERS_Start_Age__c)}
+            value={state.SS_FERS_Start_Age__c}
+            step={1}
+            onCommit={(v) => onUpdate("SS_FERS_Start_Age__c", Number(v))}
+          />
+          <Row label="SS at start age (computed)" value={fmt$(result.socialSecurity.monthlyBenefitAtStartAge, false)} />
+          <Row label="SS Full Retirement Age" value={String(result.socialSecurity.fullRetirementAge)} />
 
           {/* Charts */}
           <ColaChart result={result} />
