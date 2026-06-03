@@ -153,7 +153,7 @@ export default function LivePlanClient({
   initialIntake,
   clientName,
   dateOfBirth: initialDob,
-  address,
+  address: initialAddress,
   contactId,
 }: Props) {
   const initial = buildInitialState(initialIntake);
@@ -167,6 +167,9 @@ export default function LivePlanClient({
   // it inline; on save, the API endpoint writes it back to Contact.Birthdate.
   const [dateOfBirth, setDateOfBirth] = useState<string | null>(initialDob);
   const [savedDob, setSavedDob] = useState<string | null>(initialDob);
+  // Mailing address is editable inline too (cosmetic on the report cover).
+  const [address, setAddress] = useState<string | null>(initialAddress);
+  const [savedAddress, setSavedAddress] = useState<string | null>(initialAddress);
 
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -207,7 +210,7 @@ export default function LivePlanClient({
   const currentState = active === "A" ? planA : planB ?? initial;
   const setCurrent = active === "A" ? setPlanA : setPlanB;
 
-  const dirty = JSON.stringify(planA) !== JSON.stringify(savedA) || dateOfBirth !== savedDob;
+  const dirty = JSON.stringify(planA) !== JSON.stringify(savedA) || dateOfBirth !== savedDob || address !== savedAddress;
 
   // Run the full calc engine for each scenario.
   const meta = {
@@ -255,7 +258,9 @@ export default function LivePlanClient({
           changes.push({ field: f, oldValue: savedA[f], newValue: planA[f] });
         }
       }
-      if (changes.length === 0) {
+      const dobChanged = dateOfBirth !== savedDob;
+      const addressChanged = address !== savedAddress;
+      if (changes.length === 0 && !dobChanged && !addressChanged) {
         setMessage({ kind: "ok", text: "Nothing changed." });
         return;
       }
@@ -267,13 +272,18 @@ export default function LivePlanClient({
           intakeId: session.intakeId,
           state: planA,
           changes,
+          dateOfBirth,
+          address,
           computedAnnualAnnuity: resultA?.annuity.annualAnnuity ?? 0,
         }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || `Save failed (${res.status})`);
       setSavedA(planA);
-      setMessage({ kind: "ok", text: `Saved ${changes.length} change(s) to Salesforce.` });
+      setSavedDob(dateOfBirth);
+      setSavedAddress(address);
+      const total = changes.length + (dobChanged ? 1 : 0) + (addressChanged ? 1 : 0);
+      setMessage({ kind: "ok", text: `Saved ${total} change(s) to Salesforce.` });
     } catch (e) {
       setMessage({ kind: "err", text: e instanceof Error ? e.message : "Save failed" });
     } finally {
@@ -443,10 +453,17 @@ export default function LivePlanClient({
         )}
 
         {/* Edit panel */}
-        <aside style={{ position: "sticky", top: 24, alignSelf: "start", height: "calc(100vh - 200px)", overflowY: "auto" }}>
+        {/* No fixed height / inner scroll — the column flows full-length so every
+            input is reachable down the page (was truncating + clipping fields). */}
+        <aside style={{ alignSelf: "start" }}>
           <div style={{ background: "#fff", padding: 20, borderRadius: 4, boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
             <div style={{ fontSize: 10, color: "#C7A356", letterSpacing: 3, fontWeight: 600 }}>LIVE EDIT — {active === "A" ? "PLAN A" : "PLAN B"}</div>
             <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: 22, color: "#16253C", margin: "4px 0 16px" }}>Tune the Plan</h2>
+
+            <Group title="Client">
+              <Input label="Date of Birth" type="date" value={dateOfBirth ?? ""} onChange={(v) => setDateOfBirth(v || null)} />
+              <Input label="Mailing Address" type="text" value={address ?? ""} onChange={(v) => setAddress(v || null)} />
+            </Group>
 
             <Group title="Retirement">
               <Input label="Retirement Date" type="date" value={currentState.Desired_Retirement_Date__c} onChange={(v) => update("Desired_Retirement_Date__c", v)} />

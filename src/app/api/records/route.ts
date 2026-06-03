@@ -45,7 +45,9 @@ export async function GET(request: NextRequest) {
     // (not on FBI — that field doesn't exist on the FBI object), and state of
     // residence comes from the Contact's mailing address.
     let clientName: string | null = null;
-    let dateOfBirth: string | null = null;
+    // Prefer the FBI's own Date_of_Birth__c (set by the Live Plan inline editor,
+    // readable by the integration user) over the Contact's Birthdate.
+    let dateOfBirth: string | null = (record.Date_of_Birth__c as string) ?? null;
     let stateOfResidence: string | null = null;
     let address: string | null = null;
 
@@ -74,7 +76,7 @@ export async function GET(request: NextRequest) {
       if (result.records.length > 0) {
         const c = result.records[0] as Record<string, unknown>;
         clientName = (c.Name as string) ?? null;
-        dateOfBirth = (c.Birthdate as string) ?? null;
+        if (!dateOfBirth) dateOfBirth = (c.Birthdate as string) ?? null;
         stateOfResidence = (c.MailingState as string) ?? null;
         const street = (c.MailingStreet as string) ?? '';
         const city = (c.MailingCity as string) ?? '';
@@ -197,6 +199,10 @@ export async function GET(request: NextRequest) {
         S: record.TSP_Return_S__c,
         I: record.TSP_Return_I__c,
       },
+      // Selected L (Lifecycle) Fund variant — drives the L Fund blended return
+      // assumption in the calc engine (resolveLFundReturn).
+      tspTradLFund: record.TSP_Trad_L_Fund__c,
+      tspRothLFund: record.TSP_Roth_L_Fund__c,
 
       // FEGLI
       fegliBasic: record.FEGLI_Basic__c,
