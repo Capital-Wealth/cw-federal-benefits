@@ -919,7 +919,10 @@ function PlanColumn(props: {
             <Row label="Name" value={clientName ?? "—"} />
             <Row label="Address" value={address ?? "—"} />
             <Row label="Date of Birth" value={fmtDate(dateOfBirth)} />
-            <Row label="Current Age" value={String(currentAge)} />
+            {/* Don't show an age derived from the 1970-01-01 placeholder when DOB
+                is unknown — it reads as a real age (the bogus "56"). Show — until
+                a real DOB is entered. */}
+            <Row label="Current Age" value={dateOfBirth ? String(currentAge) : "—"} />
           </div>
           <div>
             <SectionLabel>AT RETIREMENT (CLICK ANY VALUE TO EDIT)</SectionLabel>

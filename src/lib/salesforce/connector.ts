@@ -132,6 +132,7 @@ const FIELD_MAP: Record<string, string> = {
   serviceComputationDate: "Service_Computation_Date__c",
   desiredRetirementDate: "Desired_Retirement_Date__c",
   transferDate: "Transfer_Date__c",
+  dateOfBirth: "Date_of_Birth__c",
   spouseDob: "Spouse_DOB__c",
   sickLeaveHoursPerPeriod: "Sick_Leave_Hours_Per_Period__c",
   sickLeaveHoursToDate: "Sick_Leave_Hours_To_Date__c",
