@@ -1195,15 +1195,20 @@ function EditableRow({
           title={hl.mode ? "Click to highlight" : "Click to edit"}
           style={{
             color: "#16253C",
-            fontWeight: 600,
+            fontWeight: 700,
             cursor: "pointer",
-            borderBottom: !hl.mode && hover ? "1px dashed #FDD25E" : "1px dashed transparent",
-            paddingBottom: 1,
-            transition: "border-color 0.1s",
+            // Confirmable client-provided details render as a persistent soft-gold
+            // field — so on a shared Zoom screen it's obvious which values are
+            // "verify with the client" (vs. computed numbers) and they read clearly.
+            background: hl.mode ? undefined : (hover ? "#FBEEC4" : "#FEF8E8"),
+            border: hl.mode ? undefined : "1px solid #EBCB73",
+            borderRadius: 4,
+            padding: hl.mode ? undefined : "1px 8px",
+            transition: "all 0.12s",
           }}
         >
           {display}
-          {!hl.mode && hover && <span style={{ marginLeft: 6, fontSize: 10, color: "#FDD25E", opacity: 0.7 }}>✎</span>}
+          {!hl.mode && <span style={{ marginLeft: 6, fontSize: 10, color: "#B8860B", opacity: hover ? 1 : 0.6 }}>✎</span>}
         </span>
       )}
     </div>
