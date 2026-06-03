@@ -259,23 +259,23 @@ export default function IntakePortal({ params }: { params: Promise<{ token: stri
       <Shell>
         {/* Hero */}
         <div className="bg-[#16253C] text-white rounded-xl overflow-hidden mb-8">
-          <div className="px-8 py-10 text-center">
+          <div className="px-6 py-10 text-center sm:px-8">
             <img src="https://www.capitalwealth.com/assets/images/logos/logo-horizontal-white.png" alt="Capital Wealth" className="h-10 mx-auto mb-6" />
-            <h1 className="text-3xl font-bold mb-2">Tell Us About You.</h1>
-            <p className="text-[#C7A356] text-lg font-semibold">YOUR STORY SHAPES YOUR RETIREMENT.</p>
+            <h1 className="text-2xl sm:text-3xl font-bold mb-2 text-balance whitespace-nowrap">Tell Us About You</h1>
+            <p className="text-[#C7A356] text-lg font-semibold text-balance">YOUR STORY SHAPES YOUR RETIREMENT.</p>
           </div>
         </div>
 
         <div className="max-w-2xl mx-auto">
           <p className="text-center text-zinc-600 mb-1 font-semibold">We believe in relationships, not transactions.</p>
-          <p className="text-center text-zinc-500 text-base mb-8">
+          <p className="text-center text-zinc-500 text-base mb-4">
             Spend 2-3 minutes answering a few quick questions so your advisor can prepare for your meeting.
           </p>
 
           {/* Video */}
-          <div className="mb-8 rounded-lg overflow-hidden">
-            <iframe src="https://player.vimeo.com/video/1131424148" width="100%" height="340"
-              frameBorder="0" allow="autoplay; fullscreen" allowFullScreen className="w-full" />
+          <div className="mb-6 rounded-lg overflow-hidden aspect-video">
+            <iframe src="https://player.vimeo.com/video/1131424148"
+              frameBorder="0" allow="autoplay; fullscreen" allowFullScreen className="w-full h-full" />
           </div>
 
           <div className="space-y-5">
