@@ -24,7 +24,9 @@ async function loadIntake(intakeId: string) {
 
   // Pull linked Contact for name + DOB + address
   let clientName: string | null = null;
-  let dateOfBirth: string | null = null;
+  // Prefer the FBI's own Date_of_Birth__c (what the inline editor saves and the
+  // integration user can read); fall back to the linked Contact's Birthdate.
+  let dateOfBirth: string | null = (record.Date_of_Birth__c as string) ?? null;
   let address: string | null = null;
   if (record.Contact__c) {
     const result = await conn.query(
@@ -33,7 +35,7 @@ async function loadIntake(intakeId: string) {
     if (result.records.length > 0) {
       const c = result.records[0] as Record<string, unknown>;
       clientName = (c.Name as string) ?? null;
-      dateOfBirth = (c.Birthdate as string) ?? null;
+      if (!dateOfBirth) dateOfBirth = (c.Birthdate as string) ?? null;
       const street = (c.MailingStreet as string) ?? "";
       const city = (c.MailingCity as string) ?? "";
       const state = (c.MailingState as string) ?? "";

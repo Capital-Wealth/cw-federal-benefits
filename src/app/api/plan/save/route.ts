@@ -20,6 +20,8 @@ export async function POST(request: NextRequest) {
     state: Record<string, unknown>;
     changes: { field: string; oldValue: unknown; newValue: unknown }[];
     computedAnnualAnnuity: number;
+    dateOfBirth?: string | null;
+    address?: string | null;
   };
   try {
     body = await request.json();
@@ -47,6 +49,12 @@ export async function POST(request: NextRequest) {
   for (const f of EDITABLE_FIELDS) {
     if (f in body.state) update[f] = body.state[f];
   }
+  // Date of Birth is editable inline. Persist it to the FBI's own
+  // Date_of_Birth__c (the field the integration user can read/write — avoids
+  // the Contact FLS gap) so it round-trips and the report can compute age.
+  if (body.dateOfBirth !== undefined) {
+    update.Date_of_Birth__c = body.dateOfBirth || null;
+  }
 
   try {
     await conn.sobject(SF_CONFIG.objectName).update(update as { Id: string });
@@ -55,6 +63,21 @@ export async function POST(request: NextRequest) {
       { error: "SF update failed: " + (e instanceof Error ? e.message : String(e)) },
       { status: 500 },
     );
+  }
+
+  // Mailing address is cosmetic (report cover only). Write it to the linked
+  // Contact best-effort — never fail the save if the Contact isn't reachable.
+  if (body.address !== undefined && body.address) {
+    try {
+      const rec = (await conn
+        .sobject(SF_CONFIG.objectName)
+        .retrieve(body.intakeId)) as { Contact__c?: string };
+      if (rec.Contact__c) {
+        await conn.sobject("Contact").update({ Id: rec.Contact__c, MailingStreet: body.address });
+      }
+    } catch {
+      /* non-fatal — address has no calc impact */
+    }
   }
 
   // Insert change-history rows — one per changed field.
