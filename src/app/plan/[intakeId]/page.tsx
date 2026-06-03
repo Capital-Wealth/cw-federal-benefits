@@ -125,7 +125,7 @@ function ErrorScreen({ title, body }: { title: string; body: string }) {
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#16253C] text-white p-8">
       <div className="max-w-md text-center">
-        <h1 className="text-3xl font-serif text-[#C7A356] mb-4">{title}</h1>
+        <h1 className="text-3xl font-serif text-[#FDD25E] mb-4">{title}</h1>
         <p className="text-base text-[#cad4e2]">{body}</p>
       </div>
     </div>

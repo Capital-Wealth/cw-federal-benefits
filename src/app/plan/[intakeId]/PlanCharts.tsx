@@ -7,7 +7,7 @@ import {
 import type { CalculationResult } from "@/lib/calc-types";
 
 const NAVY = "#16253C";
-const GOLD = "#C7A356";
+const GOLD = "#FDD25E";
 const BLUE = "#2b7bb9";
 const RED = "#DC2626";
 const GREEN = "#059669";
@@ -107,7 +107,7 @@ export function NetCashflowChart({ result }: { result: CalculationResult }) {
 function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div style={{ marginTop: 18 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: "#16253C", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8, paddingBottom: 2, borderBottom: "1px solid #C7A356", display: "inline-block", paddingRight: 12 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "#16253C", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8, paddingBottom: 2, borderBottom: "1px solid #FDD25E", display: "inline-block", paddingRight: 12 }}>
         {title}
       </div>
       {children}
