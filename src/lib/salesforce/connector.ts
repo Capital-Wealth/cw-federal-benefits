@@ -2,15 +2,18 @@
  * Salesforce Connector for Federal Benefits Intake
  *
  * Reads/writes Federal_Benefits_Intake__c records.
- * Supports four auth methods (tried in order):
+ * Supports five auth methods (tried in order):
+ * 0. JWT bearer (SF_JWT_PRIVATE_KEY + SF_CONSUMER_KEY + SF_USERNAME) —
+ *    least-privilege integration user (liveplan-integration), no interactive auth. Preferred in prod.
  * 1. SF_ACCESS_TOKEN env var (direct token)
- * 2. SF_REFRESH_TOKEN + SF_CLIENT_ID (OAuth refresh flow — never expires)
+ * 2. SF_REFRESH_TOKEN + SF_CLIENT_ID (OAuth refresh flow)
  * 3. SF CLI token (reads from `sf org display` — local dev only)
  * 4. Username/password flow (fallback)
  */
 
 import jsforce, { Connection } from "jsforce";
 import { execSync } from "child_process";
+import { createSign } from "node:crypto";
 import type { FederalBenefitsIntake } from "@/types";
 import { SF_CONFIG } from "@/config";
 
@@ -41,6 +44,38 @@ function getCliToken(): { accessToken: string; instanceUrl: string } | null {
 }
 
 /**
+ * Mint an access token via the OAuth 2.0 JWT bearer flow.
+ * No interactive login required — works for API-only integration users.
+ * Env: SF_CONSUMER_KEY (Connected App consumer key), SF_USERNAME (run-as user),
+ *      SF_JWT_PRIVATE_KEY (PEM private key matching the cert on the Connected App).
+ */
+async function getJwtToken(): Promise<{ accessToken: string; instanceUrl: string }> {
+  const loginUrl = SF_CONFIG.loginUrl;
+  const iss = process.env.SF_CONSUMER_KEY!;
+  const sub = process.env.SF_USERNAME!;
+  const privateKey = process.env.SF_JWT_PRIVATE_KEY!.replace(/\\n/g, "\n");
+
+  const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString("base64url");
+  const header = b64({ alg: "RS256" });
+  const claims = b64({ iss, sub, aud: loginUrl, exp: Math.floor(Date.now() / 1000) + 180 });
+  const signingInput = `${header}.${claims}`;
+  const signature = createSign("RSA-SHA256").update(signingInput).sign(privateKey).toString("base64url");
+  const assertion = `${signingInput}.${signature}`;
+
+  const res = await fetch(`${loginUrl}/services/oauth2/token`, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion,
+    }),
+  });
+  if (!res.ok) throw new Error(`SF JWT auth failed: ${res.status} ${await res.text()}`);
+  const data = await res.json();
+  return { accessToken: data.access_token, instanceUrl: data.instance_url };
+}
+
+/**
  * Get an authenticated Salesforce connection.
  */
 export async function getSFConnection(): Promise<Connection> {
@@ -48,6 +83,14 @@ export async function getSFConnection(): Promise<Connection> {
   if (connection && Date.now() < tokenExpiresAt) return connection;
 
   const instanceUrl = SF_CONFIG.instanceUrl;
+
+  // Method 0: JWT bearer (production — least-privilege liveplan-integration, no interactive auth)
+  if (process.env.SF_JWT_PRIVATE_KEY && process.env.SF_CONSUMER_KEY && process.env.SF_USERNAME) {
+    const jwtAuth = await getJwtToken();
+    connection = new Connection({ instanceUrl: jwtAuth.instanceUrl, accessToken: jwtAuth.accessToken });
+    tokenExpiresAt = Date.now() + SF_CONFIG.tokenCacheMs;
+    return connection;
+  }
 
   // Method 1: Direct access token from env
   if (process.env.SF_ACCESS_TOKEN) {
