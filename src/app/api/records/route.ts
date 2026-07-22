@@ -5,6 +5,6 @@
  * cw-federal-report-builder service (now sunsetted) via a shared API key.
  * Retired to remove the external data-sharing surface.
  */
-export async function GET() {
+export function GET() {
   return Response.json({ error: "This data API has been retired." }, { status: 410 });
 }
