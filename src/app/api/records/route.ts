@@ -1,5 +1,3 @@
-import { NextRequest } from "next/server";
-
 /**
  * GET /api/records — RETIRED
  *
@@ -7,6 +5,6 @@ import { NextRequest } from "next/server";
  * cw-federal-report-builder service (now sunsetted) via a shared API key.
  * Retired to remove the external data-sharing surface.
  */
-export async function GET(_request: NextRequest) {
+export async function GET() {
   return Response.json({ error: "This data API has been retired." }, { status: 410 });
 }

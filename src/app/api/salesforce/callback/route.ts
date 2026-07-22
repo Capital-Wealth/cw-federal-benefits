@@ -1,5 +1,3 @@
-import { NextRequest } from "next/server";
-
 /**
  * GET /api/salesforce/callback — RETIRED
  *
@@ -7,6 +5,6 @@ import { NextRequest } from "next/server";
  * cw-federal-report-builder service (now sunsetted) and returned Salesforce
  * access/refresh tokens. Retired to remove the orphaned token-minting surface.
  */
-export async function GET(_request: NextRequest) {
+export async function GET() {
   return Response.json({ error: "This endpoint has been retired." }, { status: 410 });
 }
